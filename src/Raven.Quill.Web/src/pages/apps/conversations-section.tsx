@@ -3,9 +3,10 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "@/api/api";
 import type { ConversationDto } from "@/api/generated/server-api";
 import { ApiState } from "@/components/data/api-state";
+import { DatePeriodPicker } from "@/components/data/date-period-picker";
 import { TablePagination } from "@/components/table/table-pagination";
 import type { DatePeriod } from "@/lib/date-period";
-import { DashboardStatCards, type DashboardStatCard } from "@/pages/dashboard/dashboard-stat-cards";
+import { StatCardsSection, type DashboardStatCard } from "@/pages/dashboard/dashboard-stat-cards";
 import { ConversationsTable } from "@/pages/apps/conversations/conversations-table";
 import {
     ConversationsToolbar,
@@ -19,7 +20,12 @@ interface ConversationsSectionProps {
     period: DatePeriod;
 }
 
-export function ConversationStatsCards({ slug, period }: ConversationsSectionProps) {
+export function ConversationStatsCards({
+    slug,
+    period,
+    earliest,
+    onPeriodChange,
+}: ConversationsSectionProps & { earliest: Date | undefined; onPeriodChange: (value: DatePeriod) => void }) {
     const conversationStatsQuery = useQuery(api.queries.stats.conversationStats(slug, period));
     const stats = conversationStatsQuery.data;
 
@@ -30,9 +36,10 @@ export function ConversationStatsCards({ slug, period }: ConversationsSectionPro
     ];
 
     return (
-        <SectionCard title="Activity">
-            <DashboardStatCards cards={cards} />
-        </SectionCard>
+        <StatCardsSection
+            cards={cards}
+            action={<DatePeriodPicker value={period} earliest={earliest} onChange={onPeriodChange} />}
+        />
     );
 }
 
@@ -73,8 +80,11 @@ export function ConversationsSection({ slug, period }: ConversationsSectionProps
         [conversations, search, status, agent, channel],
     );
 
+    const emptyMessage =
+        conversations.length === 0 ? "No conversations yet." : "No conversations match the current filters.";
+
     return (
-        <SectionCard title="Conversations" description="Live and historical chats across all channels.">
+        <SectionCard>
             <ApiState
                 isLoading={conversationsQuery.isPending}
                 isError={conversationsQuery.isError}
@@ -98,7 +108,11 @@ export function ConversationsSection({ slug, period }: ConversationsSectionProps
                             onChannelChange={setChannel}
                             channelOptions={channelOptions}
                         />
-                        <ConversationsTable slug={slug} conversations={filteredConversations} />
+                        <ConversationsTable
+                            slug={slug}
+                            conversations={filteredConversations}
+                            emptyMessage={emptyMessage}
+                        />
                         <TablePagination
                             pageIndex={pageIndex}
                             pageSize={PAGE_SIZE}

@@ -4,12 +4,14 @@ import { api } from "@/api/api";
 import { ApiState } from "@/components/data/api-state";
 import { DatePeriodPicker } from "@/components/data/date-period-picker";
 import { getDefaultDatePeriod } from "@/lib/date-period";
+import { useSetupStartDate } from "@/lib/use-start-date";
 import { DashboardAppsTable } from "@/pages/dashboard/dashboard-apps-table";
-import { DashboardStatCards } from "@/pages/dashboard/dashboard-stat-cards";
+import { StatCardsSection } from "@/pages/dashboard/dashboard-stat-cards";
 import { buildUsageStatCards } from "@/pages/dashboard/usage-stat-cards";
 
 export function DashboardHome() {
     const [period, setPeriod] = useState(getDefaultDatePeriod);
+    const setupStartDate = useSetupStartDate();
 
     const usageQuery = useQuery(api.queries.stats.usage(period));
     const appsQuery = useQuery(api.queries.stats.dashboardApps());
@@ -23,12 +25,12 @@ export function DashboardHome() {
             </header>
 
             {appsQuery.data && appsQuery.data.length > 0 && (
-                <div className="space-y-4">
-                    <div className="flex justify-end">
-                        <DatePeriodPicker value={period} onChange={setPeriod} />
-                    </div>
-                    <DashboardStatCards cards={cards} />
-                </div>
+                // The period lives here because it also drives the apps table below, but the
+                // picker itself renders inline with the "Activity" header via the action slot.
+                <StatCardsSection
+                    cards={cards}
+                    action={<DatePeriodPicker value={period} earliest={setupStartDate} onChange={setPeriod} />}
+                />
             )}
 
             <ApiState

@@ -99,6 +99,7 @@ builder.Services.AddSingleton<IDocumentStore>(sp =>
 builder.Services.AddSingleton<IServerReady, ServerReadyFlag>();
 builder.Services.AddSingleton<IBootstrapState, BootstrapStateFlag>();
 builder.Services.AddSingleton<IAgentRouter, AgentRouter>();
+builder.Services.AddSingleton<WebhookActionExecutor>();
 builder.Services.AddSingleton<IApiKeyStore, ApiKeyStore>();
 builder.Services.AddTransient<IFeedbackSender, FeedbackSender>();
 builder.Services.AddTransient<ILicenseStatsProvider, LicenseStatsProvider>();
@@ -107,7 +108,17 @@ if (!isOpenApiDocumentGeneration)
     builder.Services.AddHostedService<RavenReadinessService>();
     builder.Services.AddHostedService<ApplianceActivationService>();
 }
-builder.Services.AddHttpClient();
+
+builder.Services.ConfigureHttpClientDefaults(httpBuilder =>
+{
+    httpBuilder.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+    {
+        AllowAutoRedirect = false
+    });
+});
+
+builder.Services.AddHttpClient(WebhookActionExecutor.ClientName,
+    static http => http.Timeout = TimeSpan.FromSeconds(30));
 
 builder.Services.AddHttpClient<IAiHelperClient, AiHelperInternalClient>(static (sp, http) =>
     {
@@ -119,7 +130,10 @@ builder.Services.AddHttpClient<IAiHelperClient, AiHelperInternalClient>(static (
     .ConfigurePrimaryHttpMessageHandler(static sp =>
     {
         var store = sp.GetRequiredService<IDocumentStore>();
-        var handler = new HttpClientHandler();
+        var handler = new HttpClientHandler
+        {
+            AllowAutoRedirect = false
+        };
         if (store.Certificate is not null)
             handler.ClientCertificates.Add(store.Certificate);
         return handler;

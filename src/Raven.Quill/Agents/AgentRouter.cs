@@ -11,8 +11,7 @@ public sealed record AgentRequest(
     string ConversationId,
     string Prompt,
     string ChannelId,
-    IReadOnlyDictionary<string, string> Parameters
-    );
+    IReadOnlyDictionary<string, string> Parameters);
 
 public sealed record AgentRunResult(object Answer, string ConversationId);
 
@@ -27,7 +26,8 @@ public sealed class UnknownAgentException(string agentId)
     public string AgentId { get; } = agentId;
 }
 
-internal sealed class AgentRouter(IDocumentStore store) : IAgentRouter
+internal sealed class AgentRouter(
+    IDocumentStore store, WebhookActionExecutor actionExecutor, ILogger<AgentRouter> logger) : IAgentRouter
 {
     public async Task<AgentRunResult> RunAsync(AgentRequest request, Func<string, ValueTask> onChunk, AiAgentConfiguration config, CancellationToken ct)
     {
@@ -39,13 +39,15 @@ internal sealed class AgentRouter(IDocumentStore store) : IAgentRouter
         var creationOptions = new AiConversationCreationOptions();
         foreach (var (key, value) in request.Parameters)
             creationOptions.AddParameter(key, value);
-       
+
         var conversation = store.AI.ForDatabase(request.Database).Conversation(
             agentId: config.Identifier,
             conversationId: conversationId,
             creationOptions: creationOptions);
 
         conversation.AddUserPrompt(request.Prompt);
+
+        conversation.OnUnhandledAction += static _ => Task.CompletedTask; // we handle that manually
 
         var replyField = AgentOutputShape.ResolveReplyField(config);
 
@@ -54,11 +56,50 @@ internal sealed class AgentRouter(IDocumentStore store) : IAgentRouter
             async chunk => await onChunk(chunk),
             ct);
 
+        using var session = store.OpenAsyncSession(request.Database);
+        var lazyBindings = session.Advanced.Lazily.LoadAsync<AgentActionBindings>(AgentActionBindings.IdFor(config.Identifier), ct);
+
+        while (result.Status == AiConversationResult.ActionRequired)
+        {
+            var bindings = await lazyBindings.Value;
+            await RunActionsAsync(conversation, config, bindings, ct);
+
+            result = await conversation.StreamAsync<Dictionary<string, object>>(
+                replyField,
+                async chunk => await onChunk(chunk),
+                ct);
+        }
+
         var reply = AgentOutputShape.ExtractReplyText(result.Answer, replyField);
 
         await UpsertPreviewAsync(store, request, config.Identifier, conversation.Id, reply, DateTime.UtcNow, ct);
 
         return new AgentRunResult(new { reply }, conversation.Id);
+    }
+
+    private async Task RunActionsAsync(
+        IAiConversationOperations conversation, AiAgentConfiguration config,
+        AgentActionBindings bindings, CancellationToken ct)
+    {
+        var pending = conversation.RequiredActions().ToList();
+        var responses = await Task.WhenAll(pending.Select(action => RunActionAsync(action, config, bindings, ct)));
+
+        for (var i = 0; i < pending.Count; i++)
+            conversation.AddActionResponse(pending[i].ToolId, responses[i]);
+    }
+
+    private Task<string> RunActionAsync(
+        AiAgentActionRequest action, AiAgentConfiguration config,
+        AgentActionBindings bindings, CancellationToken ct)
+    {
+        if (bindings?.Bindings?.TryGetValue(action.Name, out var binding) == true)
+            return actionExecutor.ExecuteAsync(action, binding, ct);
+
+        logger.LogWarning(
+            "Agent '{AgentId}' invoked action '{Action}' (toolId {ToolId}) with no binding configured",
+            config.Identifier, action.Name, action.ToolId);
+
+        return Task.FromResult($"action failed: no binding configured for '{action.Name}'");
     }
 
     internal static async Task UpsertPreviewAsync(

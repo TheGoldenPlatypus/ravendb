@@ -908,6 +908,12 @@ export interface components {
             /** Format: date-time */
             timestamp: string;
         };
+        AgentDetailsResponse: {
+            configuration: components["schemas"]["AiAgentConfiguration"];
+            actionBindings: {
+                [key: string]: components["schemas"]["WebhookBinding"];
+            };
+        };
         AgentSummaryResponse: {
             agentId: string;
             name: string;
@@ -1390,6 +1396,12 @@ export interface components {
             unsupportedReason?: null | string;
             warnings: string[];
         };
+        EditAgentRequest: {
+            configuration: components["schemas"]["AiAgentConfiguration"];
+            actionBindings: null | {
+                [key: string]: components["schemas"]["WebhookBinding"];
+            };
+        };
         EmbeddedSettings: {
             /** Format: int32 */
             embeddingsMaxConcurrentBatches?: null | number;
@@ -1744,6 +1756,12 @@ export interface components {
             /** Format: int32 */
             embeddingsMaxConcurrentBatches?: null | number;
         };
+        WebhookBinding: {
+            url?: null | string;
+            secret?: null | string;
+            /** Format: int32 */
+            maxResponseSize?: null | number;
+        };
         WizardError: {
             message: string;
             details?: null | string;
@@ -2077,7 +2095,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AiAgentConfiguration"];
+                "application/json": components["schemas"]["EditAgentRequest"];
             };
         };
         responses: {
@@ -3049,7 +3067,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AiAgentConfiguration"];
+                    "application/json": components["schemas"]["AgentDetailsResponse"];
                 };
             };
             /** @description Not Found */
@@ -3113,7 +3131,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AiAgentConfiguration"];
+                "application/json": components["schemas"]["EditAgentRequest"];
             };
         };
         responses: {
@@ -3137,6 +3155,15 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3887,6 +3914,7 @@ export interface operations {
 }
 
 export type ActivityEventDto = components["schemas"]["ActivityEventDto"];
+export type AgentDetailsResponse = components["schemas"]["AgentDetailsResponse"];
 export type AgentSummaryResponse = components["schemas"]["AgentSummaryResponse"];
 export type AiAgentChatTrimmingConfiguration = components["schemas"]["AiAgentChatTrimmingConfiguration"];
 export type AiAgentConfiguration = components["schemas"]["AiAgentConfiguration"];
@@ -3956,6 +3984,7 @@ export type DiscoverForeignKeyResponse = components["schemas"]["DiscoverForeignK
 export type DiscoverRequest = components["schemas"]["DiscoverRequest"];
 export type DiscoverResponse = components["schemas"]["DiscoverResponse"];
 export type DiscoverTableResponse = components["schemas"]["DiscoverTableResponse"];
+export type EditAgentRequest = components["schemas"]["EditAgentRequest"];
 export type EmbeddedSettings = components["schemas"]["EmbeddedSettings"];
 export type EmbedLinkSummaryResponse = components["schemas"]["EmbedLinkSummaryResponse"];
 export type GoogleAIVersion = components["schemas"]["GoogleAIVersion"];
@@ -4013,6 +4042,7 @@ export type VerifyCdcResponse = components["schemas"]["VerifyCdcResponse"];
 export type VerifyCdcTableRequest = components["schemas"]["VerifyCdcTableRequest"];
 export type VertexAIVersion = components["schemas"]["VertexAIVersion"];
 export type VertexSettings = components["schemas"]["VertexSettings"];
+export type WebhookBinding = components["schemas"]["WebhookBinding"];
 export type WizardError = components["schemas"]["WizardError"];
 
 export const API_ENDPOINTS = {
@@ -4111,8 +4141,8 @@ export function createServerApi(client: ApiClient) {
     return {
         agents: {
             delete: (slug: string, agentId: string) => client.delete<void, ApiErrorResponse>(API_ENDPOINTS.agents.delete(slug, agentId)),
-            edit: (slug: string, request: AiAgentConfiguration) => client.post<ProvisionAgentResponse, ApiErrorResponse>(API_ENDPOINTS.agents.edit(slug), request),
-            get: (slug: string, agentId: string) => client.get<AiAgentConfiguration, ApiErrorResponse>(API_ENDPOINTS.agents.get(slug, agentId)),
+            edit: (slug: string, request: EditAgentRequest) => client.post<ProvisionAgentResponse, ApiErrorResponse>(API_ENDPOINTS.agents.edit(slug), request),
+            get: (slug: string, agentId: string) => client.get<AgentDetailsResponse, ApiErrorResponse>(API_ENDPOINTS.agents.get(slug, agentId)),
             list: (slug: string) => client.get<AgentSummaryResponse[], ApiErrorResponse>(API_ENDPOINTS.agents.list(slug)),
         },
         aiConnectionStrings: {
@@ -4133,7 +4163,7 @@ export function createServerApi(client: ApiClient) {
             delete: (slug: string) => client.delete<void, ApiErrorResponse>(API_ENDPOINTS.apps.delete(slug)),
             detail: (slug: string) => client.get<AppResponse, ApiErrorResponse>(API_ENDPOINTS.apps.detail(slug)),
             list: () => client.get<AppResponse[]>(API_ENDPOINTS.apps.list),
-            provisionAgent: (slug: string, request: AiAgentConfiguration) => client.post<ProvisionAgentResponse, ApiErrorResponse>(API_ENDPOINTS.apps.provisionAgent(slug), request),
+            provisionAgent: (slug: string, request: EditAgentRequest) => client.post<ProvisionAgentResponse, ApiErrorResponse>(API_ENDPOINTS.apps.provisionAgent(slug), request),
             setupTry: (slug: string, request: SetupTryRequest) => client.post<void, ApiErrorResponse>(API_ENDPOINTS.apps.setupTry(slug), request),
             suggestAgent: (slug: string, request: SuggestAgentRequest) => client.post<SuggestAgentResponse, ApiErrorResponse>(API_ENDPOINTS.apps.suggestAgent(slug), request),
         },

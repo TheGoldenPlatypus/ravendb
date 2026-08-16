@@ -8,7 +8,8 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/shadcn/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/shadcn/ui/sheet";
+import { SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/shadcn/ui/sheet";
+import { GuardedSheet } from "@/components/form/unsaved-changes/guarded-overlays";
 import { WebWidgetChannelForm, type FixedAgent } from "@/pages/apps/channels/web-widget-channel-form";
 
 type ChannelOption = {
@@ -55,10 +56,12 @@ export function AddChannelMenu({
     slug,
     agent,
     label = "Add channel",
+    variant = "outline",
 }: {
     slug: string;
     agent?: FixedAgent;
     label?: string;
+    variant?: "default" | "outline";
 }) {
     const [isSheetOpen, setIsSheetOpen] = useState(false);
 
@@ -66,7 +69,7 @@ export function AddChannelMenu({
         <>
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline">
+                    <Button size="sm" variant={variant}>
                         <Plus className="size-3.5" aria-hidden="true" />
                         {label}
                     </Button>
@@ -96,7 +99,7 @@ export function AddChannelMenu({
                 </DropdownMenuContent>
             </DropdownMenu>
 
-            <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+            <GuardedSheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
                 <SheetContent className="w-full gap-0 sm:max-w-lg data-[side=right]:sm:max-w-lg">
                     <SheetHeader className="border-b">
                         <SheetTitle>New web widget channel</SheetTitle>
@@ -108,7 +111,7 @@ export function AddChannelMenu({
                     </SheetHeader>
                     <WebWidgetChannelForm slug={slug} agent={agent} onCreated={() => setIsSheetOpen(false)} />
                 </SheetContent>
-            </Sheet>
+            </GuardedSheet>
         </>
     );
 }

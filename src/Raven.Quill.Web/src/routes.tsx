@@ -2,6 +2,7 @@ import {
     Bot,
     Cable,
     Database,
+    Globe,
     Home,
     KeyRound,
     LayoutGrid,
@@ -15,8 +16,9 @@ import {
     type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { createBrowserRouter, type RouteObject } from "react-router";
+import { createBrowserRouter, Outlet, type RouteObject } from "react-router";
 import App from "@/app";
+import { UnsavedChangesProvider } from "@/components/form/unsaved-changes/unsaved-changes-provider";
 import { RedirectAuthenticated, RequireAuth } from "@/components/auth/auth-routes";
 import { AppAgentEdit } from "@/pages/apps/app-agent-edit";
 import { AppAgents } from "@/pages/apps/app-agents";
@@ -33,11 +35,11 @@ import { Login } from "@/pages/auth/login";
 import { DashboardCertificates } from "@/pages/dashboard/certificates";
 import { DashboardConnectionStrings } from "@/pages/dashboard/connection-strings";
 import { DashboardHome } from "@/pages/dashboard/dashboard-home";
+import { DashboardIpConfiguration } from "@/pages/dashboard/ip-configuration";
 import { DashboardLicense } from "@/pages/dashboard/license";
 import { DashboardUsage } from "@/pages/dashboard/usage";
 import { appRoutes as appRouteBuilders, ROUTE_PATTERNS } from "@/lib/app-routes";
 import { RequireApp } from "@/pages/apps/require-app";
-import { AiPage } from "@/pages/utility/ai-page";
 import { AppScopedNotFoundPage, NotFoundPage } from "@/pages/utility/not-found-page";
 import { RouteErrorBoundary } from "@/pages/utility/route-error-boundary";
 import { SimpleInfoPage } from "@/pages/utility/simple-info-page";
@@ -151,6 +153,17 @@ const dashboardPages: AppRouteDefinition[] = [
         isPageTitleHidden: true,
         element: <DashboardCertificates />,
     },
+    {
+        path: "ip-configuration",
+        title: "IP configuration",
+        navigation: {
+            label: "IP configuration",
+            icon: Globe,
+            section: "settings",
+        },
+        isPageTitleHidden: true,
+        element: <DashboardIpConfiguration />,
+    },
 ];
 
 const appPages: AppRouteDefinition[] = [
@@ -182,6 +195,7 @@ const appPages: AppRouteDefinition[] = [
             icon: Bot,
             section: "database",
         },
+        isPageTitleHidden: true,
         element: <AppAgents />,
     },
     {
@@ -199,6 +213,7 @@ const appPages: AppRouteDefinition[] = [
             icon: MessagesSquare,
             section: "database",
         },
+        isPageTitleHidden: true,
         element: <AppConversations />,
     },
     {
@@ -229,6 +244,7 @@ const appPages: AppRouteDefinition[] = [
             icon: Cable,
             section: "settings",
         },
+        isPageTitleHidden: true,
         element: <AppChannels />,
     },
     {
@@ -371,13 +387,6 @@ const utilityRoutes: RouteObject[] = [
             title: "Docs",
         } satisfies AppRouteHandle,
     },
-    {
-        path: "ai",
-        element: <AiPage />,
-        handle: {
-            title: "AI",
-        } satisfies AppRouteHandle,
-    },
 ];
 
 export function isAppRouteHandle(handle: unknown): handle is AppRouteHandle {
@@ -387,6 +396,11 @@ export function isAppRouteHandle(handle: unknown): handle is AppRouteHandle {
 export const router = createBrowserRouter([
     {
         errorElement: <RouteErrorBoundary />,
+        element: (
+            <UnsavedChangesProvider>
+                <Outlet />
+            </UnsavedChangesProvider>
+        ),
         children: [
             {
                 path: "/login",

@@ -128,6 +128,114 @@ public abstract class QuillFeedbackTestBase(ITestOutputHelper output, QuillFeedb
     }
 }
 
+// ---- Telegram ----
+
+/// Collection host for the Telegram channel tests: the shared host plus one <see cref="MockTelegramBotApi"/> the
+/// host's bot-client factory is pointed at, and one <see cref="FakeAgentRouter"/> so pipeline tests assert on
+/// dispatched requests without a live LLM.
+public sealed class QuillTelegramFixture : QuillCollectionHost
+{
+    public MockTelegramBotApi Mock { get; private set; } = null!;
+
+    public MockOpenAiApi Llm { get; private set; } = null!;
+
+    internal FakeAgentRouter Router { get; } = new();
+
+    public override async ValueTask InitializeAsync()
+    {
+        await base.InitializeAsync();
+        Mock = await MockTelegramBotApi.StartAsync();
+        Llm = await MockOpenAiApi.StartAsync();
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        await base.DisposeAsync();
+        await Mock.DisposeAsync();
+        await Llm.DisposeAsync();
+    }
+}
+
+/// Base for the Telegram tests: points the shared collection host at the mock Bot API, shrinks the streaming
+/// edit debounce, swaps in the recording router, and resets both per test. Pollers stay off the process-wide
+/// SharedAppliance because every Telegram channel is provisioned on this collection's own host.
+public abstract class QuillTelegramTestBase(ITestOutputHelper output, QuillTelegramFixture fixture)
+    : QuillTestBase(output, fixture)
+{
+    protected MockTelegramBotApi Mock => fixture.Mock;
+
+    internal FakeAgentRouter Router => fixture.Router;
+
+    protected override Task<QuillHost> NewHostAsync(
+        Action<ApplianceOptions>? configure = null, Action<IServiceCollection>? configureServices = null,
+        string setupPackagePath = "", bool seedChatConnectionString = true, bool longLived = false) =>
+        base.NewHostAsync(
+            configure: opts =>
+            {
+                ApplyTelegramOptions(opts);
+                configure?.Invoke(opts);
+            },
+            configureServices: services =>
+            {
+                services.RemoveAll<Raven.Quill.Agents.IAgentRouter>();
+                services.AddSingleton<Raven.Quill.Agents.IAgentRouter>(fixture.Router);
+                configureServices?.Invoke(services);
+            },
+            setupPackagePath: setupPackagePath, seedChatConnectionString: seedChatConnectionString,
+            longLived: longLived);
+
+    protected MockOpenAiApi Llm => fixture.Llm;
+
+    protected Task<QuillHost> NewRealRouterHostAsync() =>
+        base.NewHostAsync(configure: ApplyTelegramOptions, seedChatConnectionString: false);
+
+    private void ApplyTelegramOptions(ApplianceOptions opts)
+    {
+        opts.Telegram.ApiUrl = fixture.Mock.BaseAddress;
+        opts.Telegram.EditDebounce = TimeSpan.FromMilliseconds(50);
+        opts.Telegram.ApplyChangesInterval = TimeSpan.FromMilliseconds(250);
+    }
+
+    public override async ValueTask InitializeAsync()
+    {
+        await base.InitializeAsync();
+        Mock.Reset();
+        Router.Reset();
+        Llm.Reset();
+    }
+
+    protected async Task<int> WaitForPollingToSettleAsync(string token, TimeSpan? timeout = null)
+    {
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(20));
+        var last = Mock.GetUpdatesCallCount(token);
+        var quietWindows = 0;
+
+        while (true)
+        {
+            await Task.Delay(400);
+
+            var current = Mock.GetUpdatesCallCount(token);
+            if (current == last)
+            {
+                // one quiet window can be a scheduler stall on a loaded runner; require two in a row
+                if (++quietWindows >= 2)
+                    return current;
+                continue;
+            }
+
+            if (DateTime.UtcNow > deadline)
+                throw new TimeoutException($"Telegram polling never settled; still at {current} calls");
+
+            quietWindows = 0;
+            last = current;
+        }
+    }
+
+    /// Unique per test so captures/counters on the shared mock never bleed across tests in the collection.
+    protected static string NewBotToken() =>
+        $"{Random.Shared.NextInt64(1_000_000, 9_999_999)}:AA{Guid.NewGuid():N}";
+}
+
 // ---- AI models ----
 
 /// A resettable <see cref="IAiHelperClient"/> that records the last call and returns a per-test-configurable

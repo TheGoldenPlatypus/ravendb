@@ -26,6 +26,8 @@ public sealed class ApplianceOptions
     [Url]
     public string? AiApiUrl { get; set; }
 
+    public TelegramOptions Telegram { get; set; } = new();
+
     public TimeSpan ReadinessInitialDelay { get; set; } = TimeSpan.FromSeconds(15);
 
     public TimeSpan ReadinessAttemptTimeout { get; set; } = TimeSpan.FromSeconds(2);

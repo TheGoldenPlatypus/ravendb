@@ -12,11 +12,13 @@ using Polly;
 using Raven.Quill.Agents;
 using Raven.Quill.AiHelper;
 using Raven.Quill.Auth;
+using Raven.Quill.Embed;
 using Raven.Quill.Endpoints;
 using Raven.Quill.Feedback;
 using Raven.Quill.Hosting;
 using Raven.Quill.Infrastructure;
 using Raven.Quill.Licensing;
+using Raven.Quill.Telegram;
 using Raven.Client.Documents;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -73,6 +75,7 @@ builder.Services.AddOptions<ApplianceOptions>()
         ReadEnv("RAVEN_QUILL_SETUP_PACKAGE_PATH", v => options.SetupPackagePath = v);
         ReadEnv("RAVEN_QUILL_RAVENDB_S6_SERVICE", v => options.RavenDbS6Service = v);
         ReadEnv("RAVEN_QUILL_API_URL", v => options.AiApiUrl = v);
+        ReadEnv("RAVEN_QUILL_TELEGRAM_API_URL", v => options.Telegram.ApiUrl = v);
         ReadEnv("QUILL_LICENSE_KEY", v => options.LicenseKey = v);
         ReadEnv("QUILL_API_KEY", v => options.ApiKey = v);
         ReadEnv("RAVEN_QUILL_RAVENDB_INTERNAL_PORT", v =>
@@ -91,6 +94,17 @@ builder.Services.AddOptions<ApplianceOptions>()
             options.ReadinessOverallTimeout = ParsePositiveSeconds("RAVEN_QUILL_READINESS_OVERALL_TIMEOUT_SECONDS", v));
     })
     .ValidateDataAnnotations()
+    .Validate(o => string.IsNullOrEmpty(o.Telegram.ApiUrl) ||
+                   Uri.TryCreate(o.Telegram.ApiUrl, UriKind.Absolute, out var u) &&
+                   (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps),
+        "Telegram ApiUrl must be an absolute http(s) URL")
+    .Validate(o => o.Telegram.MessageLimit is > 0 and <= TelegramMessageSplitter.TelegramApiMessageLimit,
+        $"Telegram MessageLimit must be between 1 and {TelegramMessageSplitter.TelegramApiMessageLimit}")
+    .Validate(o => o.Telegram.ChatQueueCapacity > 0, "Telegram ChatQueueCapacity must be positive")
+    .Validate(o => o.Telegram.EditDebounce > TimeSpan.Zero, "Telegram EditDebounce must be positive")
+    .Validate(o => o.Telegram.ApplyChangesInterval > TimeSpan.Zero, "Telegram ApplyChangesInterval must be positive")
+    .Validate(o => o.Telegram.ChatIdleTimeout > TimeSpan.Zero, "Telegram ChatIdleTimeout must be positive")
+    .Validate(o => o.Telegram.PollBackoffMax > TimeSpan.Zero, "Telegram PollBackoffMax must be positive")
     .ValidateOnStart();
 
 builder.Services.AddSingleton<IDocumentStore>(sp =>
@@ -101,12 +115,22 @@ builder.Services.AddSingleton<IBootstrapState, BootstrapStateFlag>();
 builder.Services.AddSingleton<IAgentRouter, AgentRouter>();
 builder.Services.AddSingleton<WebhookActionExecutor>();
 builder.Services.AddSingleton<IApiKeyStore, ApiKeyStore>();
+
+// Read once at startup: the widget manifest only changes when the image is rebuilt, and a missing one is
+// worth logging loudly the moment the process starts rather than on the first visitor's request.
+builder.Services.AddSingleton(sp => WidgetAssets.Load(
+    sp.GetRequiredService<IWebHostEnvironment>(),
+    sp.GetRequiredService<ILoggerFactory>().CreateLogger<WidgetAssets>()));
 builder.Services.AddTransient<IFeedbackSender, FeedbackSender>();
 builder.Services.AddTransient<ILicenseStatsProvider, LicenseStatsProvider>();
+builder.Services.AddSingleton<ITelegramBotClientFactory, TelegramBotClientFactory>();
+builder.Services.AddSingleton<TelegramChannelManager>();
+builder.Services.AddSingleton<ITelegramChannelManager>(sp => sp.GetRequiredService<TelegramChannelManager>());
 if (!isOpenApiDocumentGeneration)
 {
     builder.Services.AddHostedService<RavenReadinessService>();
     builder.Services.AddHostedService<ApplianceActivationService>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<TelegramChannelManager>());
 }
 
 builder.Services.ConfigureHttpClientDefaults(httpBuilder =>

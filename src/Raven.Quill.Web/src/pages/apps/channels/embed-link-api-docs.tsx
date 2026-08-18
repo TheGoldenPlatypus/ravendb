@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { ChevronDown, InfoIcon } from "lucide-react";
+import { ChevronDown, ShieldAlertIcon } from "lucide-react";
 import { CopyableCode } from "@/components/data/copyable-code";
 import { Alert, AlertDescription, AlertTitle } from "@/components/shadcn/ui/alert";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/shadcn/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/shadcn/ui/tabs";
+import { originForSubdomain } from "@/lib/subdomain-origin";
 import {
     buildMintEmbedLinkUrl,
     DEFAULT_MAX_INVOCATIONS,
@@ -13,6 +14,7 @@ import {
     MIN_INVOCATIONS,
     MIN_TTL_SECONDS,
 } from "@/pages/apps/channels/embed-link-utils";
+import { buildBackedHostPageSnippet } from "@/pages/apps/channels/embed-host-page-snippets";
 import { InlineCode } from "@/components/data/inline-code";
 import type { HighlightLanguage } from "@/components/ace-editor/static-highlight";
 
@@ -53,6 +55,7 @@ type EmbedLinkApiDocsProps = {
 export function EmbedLinkApiDocs({ slug, channelId, parameterNames }: EmbedLinkApiDocsProps) {
     const hasParameters = parameterNames.length > 0;
     const requests = buildRequestSnippets(slug, channelId, parameterNames);
+    const embedOrigin = originForSubdomain("public");
 
     const [isOpen, setIsOpen] = useState(readIsOpen);
     const [language, setLanguage] = useState<Language>(readLanguage);
@@ -92,7 +95,7 @@ export function EmbedLinkApiDocs({ slug, channelId, parameterNames }: EmbedLinkA
         <Collapsible open={isOpen} onOpenChange={onOpenChange} className="rounded-md border bg-card p-4">
             <h2 className="text-sm font-semibold">
                 <CollapsibleTrigger className="group flex w-full items-center justify-between gap-3 rounded-sm text-left focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none">
-                    Generate links via the API
+                    Embed on your own site
                     <ChevronDown
                         className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
                         aria-hidden="true"
@@ -100,46 +103,68 @@ export function EmbedLinkApiDocs({ slug, channelId, parameterNames }: EmbedLinkA
                 </CollapsibleTrigger>
             </h2>
 
-            <CollapsibleContent className="mt-4 grid gap-4">
-                <p className="text-sm text-muted-foreground">
-                    Mint links from your own backend by POSTing to the embed-links endpoint, authenticated with your
-                    operator key in the <InlineCode>X-Api-Key</InlineCode> header. The app and channel are already
-                    filled in below — swap in your <InlineCode>QUILL_API_KEY</InlineCode>
-                    {hasParameters ? " and the parameter values" : ""}.
-                </p>
+            <CollapsibleContent className="mt-4 grid gap-8">
+                <section className="grid gap-4">
+                    <div className="grid gap-1">
+                        <h3 className="text-sm font-medium">Mint links from your backend</h3>
+                        <p className="text-sm text-muted-foreground">
+                            Your server POSTs to the embed-links endpoint with your operator key in the{" "}
+                            <InlineCode>X-Api-Key</InlineCode> header, then hands the page nothing but the returned{" "}
+                            <InlineCode>url</InlineCode>. The app and channel are already filled in below - swap in your{" "}
+                            <InlineCode>QUILL_API_KEY</InlineCode>
+                            {hasParameters ? " and the parameter values" : ""}.
+                        </p>
+                    </div>
 
-                <Tabs value={language} onValueChange={onLanguageChange} className="gap-3">
-                    <TabsList>
-                        {LANGUAGE_OPTIONS.map(({ value, label }) => (
-                            <TabsTrigger key={value} value={value}>
-                                {label}
-                            </TabsTrigger>
+                    <Tabs value={language} onValueChange={onLanguageChange} className="gap-3">
+                        <TabsList>
+                            {LANGUAGE_OPTIONS.map(({ value, label }) => (
+                                <TabsTrigger key={value} value={value}>
+                                    {label}
+                                </TabsTrigger>
+                            ))}
+                        </TabsList>
+                        {LANGUAGE_OPTIONS.map(({ value, mode }) => (
+                            <TabsContent key={value} value={value}>
+                                <Alert variant="warning" className="mb-2">
+                                    <ShieldAlertIcon />
+                                    <AlertTitle>Run this on your server, never in a browser</AlertTitle>
+                                    <AlertDescription>
+                                        The operator key grants full access to every app, not just this widget, so it
+                                        must never be shipped to a page or called from client-side JavaScript. The
+                                        endpoint also sends no CORS headers, so a browser <InlineCode>fetch</InlineCode>{" "}
+                                        to it fails on preflight regardless.
+                                    </AlertDescription>
+                                </Alert>
+                                <CopyableCode
+                                    code={requests[value]}
+                                    language={mode}
+                                    copyLabel="Copy server-side mint request"
+                                />
+                            </TabsContent>
                         ))}
-                    </TabsList>
-                    {LANGUAGE_OPTIONS.map(({ value, mode }) => (
-                        <TabsContent key={value} value={value}>
-                            <CopyableCode code={requests[value]} language={mode} copyLabel="Copy API request" />
-                        </TabsContent>
-                    ))}
-                </Tabs>
+                    </Tabs>
+                    <dl className="grid gap-2 text-sm">
+                        {fields.map((field) => (
+                            <div key={field.name} className="grid gap-x-3 sm:grid-cols-[8rem_1fr]">
+                                <dt className="font-mono text-xs font-medium text-muted-foreground">{field.name}</dt>
+                                <dd className="text-muted-foreground">{field.description}</dd>
+                            </div>
+                        ))}
+                    </dl>
 
-                <Alert>
-                    <InfoIcon />
-                    <AlertTitle>Using the response</AlertTitle>
-                    <AlertDescription>
-                        The response returns a <InlineCode>url</InlineCode> — use it as-is in an{" "}
-                        <InlineCode>&lt;iframe src&gt;</InlineCode>. It is served only on the public embed host.
-                    </AlertDescription>
-                </Alert>
-
-                <dl className="grid gap-2 text-sm">
-                    {fields.map((field) => (
-                        <div key={field.name} className="grid gap-x-3 sm:grid-cols-[8rem_1fr]">
-                            <dt className="font-mono text-xs font-medium">{field.name}</dt>
-                            <dd className="text-muted-foreground">{field.description}</dd>
-                        </div>
-                    ))}
-                </dl>
+                    <div className="grid gap-2">
+                        <p className="text-sm">
+                            Then in the page, point an iframe at the <InlineCode>url</InlineCode> your endpoint
+                            returned:
+                        </p>
+                        <CopyableCode
+                            code={buildBackedHostPageSnippet(embedOrigin)}
+                            language="html"
+                            copyLabel="Copy host page"
+                        />
+                    </div>
+                </section>
             </CollapsibleContent>
         </Collapsible>
     );

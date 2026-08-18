@@ -6,6 +6,7 @@ using Raven.Quill.Agents;
 using Raven.Quill.Channels;
 using Raven.Quill.Contracts;
 using Raven.Quill.Endpoints.Helpers;
+using Raven.Quill.Raven;
 
 namespace Raven.Quill.Endpoints;
 
@@ -28,10 +29,12 @@ public static class EmbedLinksEndpoints
         group.MapPost("/embed-links", MintAsync)
             .WithName("embedLinks.mint")
             .WithDescription(
-                "Mints a per-user embed link for an iFrame channel (by channelId). Parameters are " +
+                "Mints a per-user embed link for an iFrame channel (by channelId). SERVER-SIDE ONLY: it " +
+                "needs the operator key, which must never reach a browser, and it sends no CORS headers " +
+                "— call it from your backend and pass only the returned url to the page. Parameters are " +
                 "validated against the channel's agent and bound into the link server-side (never " +
-                "client-supplied). ttlSeconds and maxInvocations are bounded; both default " +
-                "when omitted. Returns the opaque token + an absolute, paste-ready embed URL.")
+                "client-supplied). ttlSeconds and maxInvocations are bounded; both default when omitted. " +
+                "Returns the opaque token + an absolute, paste-ready embed URL.")
             .Accepts<MintEmbedLinkRequest>("application/json")
             .Produces<MintEmbedLinkResponse>()
             .Produces<ApiErrorResponse>(StatusCodes.Status400BadRequest)
@@ -55,17 +58,8 @@ public static class EmbedLinksEndpoints
 
         using var session = store.OpenAsyncSession(app.Database);
 
-        const int pageSize = 1024;
         var now = DateTime.UtcNow;
-        var links = new List<EmbedLink>();
-        for (var start = 0;; start += pageSize)
-        {
-            var page = (await session.Advanced.LoadStartingWithAsync<EmbedLink>(
-                EmbedLink.IdPrefix, start: start, pageSize: pageSize, token: ct)).ToArray();
-            links.AddRange(page);
-            if (page.Length < pageSize)
-                break;
-        }
+        var links = await session.LoadAllStartingWithAsync<EmbedLink>(EmbedLink.IdPrefix, ct);
 
         var items = links
             .Where(l => l.Revoked == false && l.ExpiresAt > now)

@@ -12,6 +12,7 @@ import {
     discoveryWithAllStates,
     failedCdcVerification,
     failedDiscovery,
+    failedMappingTest,
     manyTablesDiscovery,
     sampleDiscovery,
     setupMocks,
@@ -23,7 +24,7 @@ import { isTableSupported } from "./discover-utils";
 import { appSchema, type AppFormData, type AppStepId } from "./app-wizard-validation";
 import { computeSourceKey } from "./steps/connect/use-connect-source-step";
 import { computeMapKey } from "./steps/map/use-map-schema-step";
-import { scaffoldRootTable } from "./steps/map-tables/map-tables-utils";
+import { createEmptyRootTable, scaffoldRootTable } from "./steps/map-tables/map-tables-utils";
 
 const meta = {
     title: "Setup/Add App Wizard",
@@ -158,6 +159,25 @@ function AppWizardStepBody({ initialStep }: { initialStep: AppStepId }) {
     );
 }
 
+/**
+ * What the select-all box actually draws. `aria-checked` was already correct while a partial
+ * selection still rendered the same checkmark as a complete one, so the mark is the part worth
+ * asserting: "check" for every row, "dash" for some, "empty" for none.
+ */
+function readSelectAllMark(canvasElement: HTMLElement): "check" | "dash" | "empty" {
+    const box = within(canvasElement).getByRole("checkbox", { name: "Select all" });
+    const marks = [...box.querySelectorAll("svg")].filter((svg) => getComputedStyle(svg).display !== "none");
+
+    if (marks.length === 0) {
+        return "empty";
+    }
+    if (marks.length > 1) {
+        throw new Error(`Expected one visible mark in the select-all box, found ${marks.length}`);
+    }
+
+    return marks[0]!.classList.contains("lucide-minus") ? "dash" : "check";
+}
+
 export const ChooseDataSource: Story = {
     render: () => <AppWizardAtStep initialStep="dataSource" />,
 };
@@ -253,6 +273,13 @@ export const ConnectSourceError: Story = {
 export const VerifySchema: Story = {
     parameters: { msw: { handlers: discoverHandlers(discoveryWithAllStates) } },
     render: () => <AppWizardAtStep initialStep="verifySchema" discovery={discoveryWithAllStates} />,
+    // Every verified table starts selected, so the header draws a check rather than a partial dash.
+    play: async ({ canvasElement }) => {
+        const canvas = within(canvasElement);
+
+        await waitFor(() => expect(canvas.getByRole("checkbox", { name: "Select all" })).toBeInTheDocument());
+        expect(readSelectAllMark(canvasElement)).toBe("check");
+    },
 };
 
 // Discovery failed: only the destructive error banner is shown, no tables.
@@ -286,10 +313,13 @@ export const VerifySchemaSelectionLimit: Story = {
         // which would drop the held shift key before the range click.
         const user = userEvent.setup();
         const rowCheckboxes = () => canvas.getAllByRole("checkbox", { name: "Select row" });
+        const selectAll = () => canvas.getByRole("checkbox", { name: "Select all" });
         const limitNotice = () => canvas.queryByText(/one app processes at most 64 tables/i);
         const previewedRows = () => canvasElement.querySelectorAll(`.${RANGE_PREVIEW_ROW_CLASSNAME}`);
+        const selectAllMark = () => readSelectAllMark(canvasElement);
 
-        expect(canvas.getByText(/while clicking to select a range of tables/i)).toBeInTheDocument();
+        expect(canvas.getByText(/to select a range of tables/i)).toBeInTheDocument();
+        expect(selectAllMark()).toBe("empty");
 
         await user.click(rowCheckboxes()[0]);
 
@@ -303,14 +333,80 @@ export const VerifySchemaSelectionLimit: Story = {
         await waitFor(() => expect(canvas.getByText(/4 out of 80 tables selected/)).toBeInTheDocument());
         await waitFor(() => expect(previewedRows()).toHaveLength(0));
         expect(limitNotice()).not.toBeInTheDocument();
+        // 4 of 80 is a partial selection, so the header must not claim everything is selected.
+        expect(selectAll()).toHaveAttribute("aria-checked", "mixed");
+        expect(selectAllMark()).toBe("dash");
 
-        const selectAll = canvas.getByRole("checkbox", { name: "Select all" });
-        await user.click(selectAll);
+        await user.click(selectAll());
         await waitFor(() => expect(canvas.getByText(/64 out of 80 tables selected/)).toBeInTheDocument());
         expect(limitNotice()).toBeInTheDocument();
+        // The limit stops select-all short of every row, so the selection stays partial.
+        expect(selectAllMark()).toBe("dash");
 
-        await user.click(selectAll);
+        await user.click(selectAll());
         await waitFor(() => expect(limitNotice()).not.toBeInTheDocument());
+        expect(selectAllMark()).toBe("empty");
+    },
+};
+
+// A shift-click has to be able to start a multi-selection from an empty one. The range used to
+// inherit the anchor row's own state, so with nothing selected the click cleared an already empty
+// range - and suppressed the plain toggle on the way - leaving the click with no effect at all.
+export const VerifySchemaShiftSelectFromEmpty: Story = {
+    parameters: { msw: { handlers: discoverHandlers(manyTablesDiscovery) } },
+    render: () => (
+        <AppWizardAtStep initialStep="verifySchema" discovery={manyTablesDiscovery} hasSelectedTables={false} />
+    ),
+    play: async ({ canvasElement }) => {
+        const canvas = within(canvasElement);
+        const user = userEvent.setup();
+        const rowCheckboxes = () => canvas.getAllByRole("checkbox", { name: "Select row" });
+        const selectedCount = () => rowCheckboxes().filter((box) => box.getAttribute("aria-checked") === "true").length;
+
+        // Leaves an anchor behind on an empty selection - where an operator lands after picking a
+        // table and changing their mind.
+        await user.click(rowCheckboxes()[0]);
+        await waitFor(() => expect(selectedCount()).toBe(1));
+        await user.click(rowCheckboxes()[0]);
+        await waitFor(() => expect(selectedCount()).toBe(0));
+
+        await user.keyboard("{Shift>}");
+        await user.click(rowCheckboxes()[4]);
+        await user.keyboard("{/Shift}");
+
+        await waitFor(() => expect(canvas.getByText(/5 out of 80 tables selected/)).toBeInTheDocument());
+
+        // Shift-clicking inside the range it just took clears it again.
+        await user.keyboard("{Shift>}");
+        await user.click(rowCheckboxes()[4]);
+        await user.keyboard("{/Shift}");
+
+        await waitFor(() => expect(selectedCount()).toBe(0));
+    },
+};
+
+// The anchor is only ever recorded by clicking a row, so a selection that arrived any other way -
+// seeded from a stored configuration, or cleared through "Deselect all" - used to leave the first
+// shift-click with no second endpoint, degrading it to a plain single toggle.
+export const VerifySchemaShiftSelectWithoutClicking: Story = {
+    parameters: { msw: { handlers: discoverHandlers(discoveryWithAllStates) } },
+    render: () => <AppWizardAtStep initialStep="verifySchema" discovery={discoveryWithAllStates} />,
+    play: async ({ canvasElement }) => {
+        const canvas = within(canvasElement);
+        const user = userEvent.setup();
+        const rowCheckboxes = () => canvas.getAllByRole("checkbox", { name: "Select row" });
+        const selectedCount = () => rowCheckboxes().filter((box) => box.getAttribute("aria-checked") === "true").length;
+
+        // Clears the seeded selection without ever clicking a row, so no anchor is recorded.
+        await user.click(canvas.getByRole("button", { name: /deselect all/i }));
+        await waitFor(() => expect(selectedCount()).toBe(0));
+
+        // The range still opens, counted from the top of the table.
+        await user.keyboard("{Shift>}");
+        await user.click(rowCheckboxes()[2]);
+        await user.keyboard("{/Shift}");
+
+        await waitFor(() => expect(selectedCount()).toBe(3));
     },
 };
 
@@ -338,12 +434,116 @@ export const VerifySchemaCdcVerificationFailed: Story = {
     },
 };
 
+// Seeded with a prompt, so the field is already there and stepping back never hides it.
 export const MapSchema: Story = {
     render: () => <AppWizardAtStep initialStep="map" />,
+    play: async ({ canvasElement }) => {
+        const canvas = within(canvasElement);
+
+        expect(canvas.getByRole("textbox", { name: /intent prompt/i })).toBeInTheDocument();
+    },
+};
+
+const withoutIntentPrompt = (seed: AppFormData): AppFormData => ({ ...seed, map: { ...seed.map, aiPrompt: "" } });
+
+// The real first-run state: AI mapping chosen, no prompt yet, so the step asks only the
+// AI-versus-manual question. Deliberately has no play - a story that clicks its own button is an
+// interaction test, and this one has to stay at rest to be worth looking at.
+export const MapSchemaWithoutIntentPrompt: Story = {
+    render: () => <AppWizardAtStep initialStep="map" seedOverride={withoutIntentPrompt} />,
+};
+
+/*
+   The three stories below drive the intent prompt's transitions. Each one ends up looking like a
+   state already on show above, so they are tagged "!dev" to keep them out of the sidebar - the
+   vitest addon selects on the "test" tag, so they still run.
+*/
+
+// Adding the field swaps the button for a focused textarea.
+export const MapSchemaAddIntentPrompt: Story = {
+    tags: ["!dev"],
+    render: () => <AppWizardAtStep initialStep="map" seedOverride={withoutIntentPrompt} />,
+    play: async ({ canvasElement }) => {
+        const canvas = within(canvasElement);
+
+        expect(canvas.queryByRole("textbox", { name: /intent prompt/i })).not.toBeInTheDocument();
+
+        await userEvent.click(canvas.getByRole("button", { name: /add an intent prompt/i }));
+
+        const prompt = await waitFor(() => canvas.getByRole("textbox", { name: /intent prompt/i }));
+        expect(prompt).toHaveFocus();
+        expect(canvas.queryByRole("button", { name: /add an intent prompt/i })).not.toBeInTheDocument();
+    },
+};
+
+// Removing takes the text with it, so nothing keeps steering the suggestion from a hidden field.
+export const MapSchemaRemoveIntentPrompt: Story = {
+    tags: ["!dev"],
+    render: () => <AppWizardAtStep initialStep="map" />,
+    play: async ({ canvasElement }) => {
+        const canvas = within(canvasElement);
+
+        expect(canvas.getByRole("textbox", { name: /intent prompt/i })).toHaveValue(
+            "Embed order line items and link customers by id.",
+        );
+
+        await userEvent.click(canvas.getByRole("button", { name: /remove/i }));
+
+        const addButton = await waitFor(() => canvas.getByRole("button", { name: /add an intent prompt/i }));
+        expect(addButton).toHaveFocus();
+
+        // Re-adding starts from empty rather than restoring the discarded prompt.
+        await userEvent.click(addButton);
+        await waitFor(() => expect(canvas.getByRole("textbox", { name: /intent prompt/i })).toHaveValue(""));
+    },
+};
+
+// Reaching for the prompt while "Manual" is selected asks for a mapping the prompt cannot steer,
+// so adding it moves the choice to AI Suggest.
+export const MapSchemaIntentPromptFromManual: Story = {
+    tags: ["!dev"],
+    render: () => (
+        <AppWizardAtStep
+            initialStep="map"
+            seedOverride={(seed) => ({ ...seed, map: { source: "manual", aiPrompt: "" } })}
+        />
+    ),
+    play: async ({ canvasElement }) => {
+        const canvas = within(canvasElement);
+
+        expect(canvas.getByRole("radio", { name: /manual/i })).toBeChecked();
+
+        await userEvent.click(canvas.getByRole("button", { name: /add an intent prompt/i }));
+        await waitFor(() => expect(canvas.getByRole("radio", { name: /ai suggest/i })).toBeChecked());
+        expect(canvas.getByRole("textbox", { name: /intent prompt/i })).toBeInTheDocument();
+    },
 };
 
 export const MapTables: Story = {
     render: () => <AppWizardAtStep initialStep="mapTables" />,
+};
+
+// The raw editor can only be left through a mapping that validates, so an incomplete table (here a
+// just-added empty one) must not be able to open it - that used to be a one-way trip into raw JSON.
+export const MapTablesRawViewBlockedByInvalidTable: Story = {
+    tags: ["!dev"],
+    render: () => (
+        <AppWizardAtStep
+            initialStep="mapTables"
+            seedOverride={(seed) => ({
+                ...seed,
+                mapTables: { tables: [...seed.mapTables.tables, createEmptyRootTable()] },
+            })}
+        />
+    ),
+    play: async ({ canvasElement }) => {
+        const canvas = within(canvasElement);
+
+        await userEvent.click(canvas.getByRole("switch", { name: /raw json/i }));
+
+        await waitFor(() => expect(canvas.getByRole("switch", { name: /raw json/i })).not.toBeChecked());
+        expect(canvas.getByPlaceholderText(/filter tables/i)).toBeInTheDocument();
+    },
 };
 
 // The suggestion call routinely runs for more than a minute, so it is parked here to keep the
@@ -355,4 +555,23 @@ export const MapTablesSuggesting: Story = {
 
 export const Preview: Story = {
     render: () => <AppWizardAtStep initialStep="preview" />,
+};
+
+// The mapping ran but reported errors, so the preview shows the destructive banner instead of documents.
+export const PreviewMappingErrors: Story = {
+    parameters: {
+        msw: { handlers: { setup: [setupMocks.testMapping(failedMappingTest), ...defaultApiMocks.setup] } },
+    },
+    render: () => <AppWizardAtStep initialStep="preview" />,
+    play: async ({ canvasElement }) => {
+        const canvas = within(canvasElement);
+
+        await waitFor(() => expect(canvas.getByText("Testing the mapping failed")).toBeInTheDocument());
+
+        // The banner is one alert, not an alert nested in another one.
+        expect(canvasElement.querySelectorAll('[data-slot="alert"]')).toHaveLength(1);
+
+        await userEvent.click(canvas.getByRole("button", { name: /show details/i }));
+        expect(canvas.getByText(/is an invalid start of a value/i)).toBeInTheDocument();
+    },
 };

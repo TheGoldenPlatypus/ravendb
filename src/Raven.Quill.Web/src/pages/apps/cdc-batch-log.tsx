@@ -1,7 +1,7 @@
-import { useId, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode, type UIEvent } from "react";
+import { useId, useLayoutEffect, useRef, useState, type ReactNode, type UIEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronRight, CircleAlert, CircleCheck, Loader2, type LucideIcon } from "lucide-react";
-import { Badge } from "@/components/shadcn/ui/badge";
+import { ChevronRight } from "lucide-react";
+import { StatusIndicator, type StatusTone } from "@/components/data/status-indicator";
 import { Label } from "@/components/shadcn/ui/label";
 import { Switch } from "@/components/shadcn/ui/switch";
 import { formatCompact } from "@/lib/format";
@@ -11,7 +11,6 @@ import type { CdcLiveBatch, CdcLiveBatchState } from "@/pages/apps/use-cdc-live-
 // The h-10 header button plus the 1px row separator, so an unmeasured collapsed row already
 // estimates to its real height and the total size barely moves once measuring catches up.
 const COLLAPSED_ROW_HEIGHT_IN_PX = 41;
-const LIST_HEIGHT_IN_PX = 420;
 const OVERSCAN = 12;
 // Slack around the bottom edge so a resting scroll position still counts as "at the latest".
 const AT_LATEST_THRESHOLD_IN_PX = 24;
@@ -116,7 +115,7 @@ function CdcBatchList({ batches }: { batches: CdcLiveBatch[] }) {
                 ref={scrollRef}
                 onScroll={handleScroll}
                 className="overflow-y-auto overscroll-contain"
-                style={{ height: LIST_HEIGHT_IN_PX }}
+                style={{ height: "clamp(10rem, 40dvh, 26rem)" }}
             >
                 <div ref={contentRef} className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
                     {virtualizer.getVirtualItems().map((virtualRow) => {
@@ -153,33 +152,20 @@ function CdcBatchList({ batches }: { batches: CdcLiveBatch[] }) {
     );
 }
 
-const BATCH_STATES: Record<
-    CdcLiveBatchState,
-    {
-        label: string;
-        badgeVariant: ComponentProps<typeof Badge>["variant"];
-        icon: LucideIcon;
-        iconClassName?: string;
-        accentClassName: string;
-    }
-> = {
+const BATCH_STATES: Record<CdcLiveBatchState, { label: string; tone: StatusTone; accentClassName: string }> = {
     success: {
         label: "Success",
-        badgeVariant: "success",
-        icon: CircleCheck,
+        tone: "positive",
         accentClassName: "border-l-success",
     },
     pending: {
         label: "Pending",
-        badgeVariant: "secondary",
-        icon: Loader2,
-        iconClassName: "animate-spin",
+        tone: "loading",
         accentClassName: "border-l-muted-foreground",
     },
     error: {
         label: "Error",
-        badgeVariant: "destructive",
-        icon: CircleAlert,
+        tone: "danger",
         accentClassName: "border-l-destructive",
     },
 };
@@ -196,7 +182,6 @@ function CdcBatchRow({
     onToggle: () => void;
 }) {
     const state = BATCH_STATES[batch.state];
-    const StateIcon = state.icon;
     const errorCount = batch.scriptErrors + batch.readErrors;
 
     return (
@@ -214,10 +199,7 @@ function CdcBatchRow({
                         isExpanded && "rotate-90",
                     )}
                 />
-                <Badge variant={state.badgeVariant} className="w-20 shrink-0 justify-start">
-                    <StateIcon aria-hidden={true} className={state.iconClassName} />
-                    {state.label}
-                </Badge>
+                <StatusIndicator tone={state.tone} label={state.label} className="shrink-0 justify-start" />
                 <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
                     {formatBatchTime(batch.started)}
                 </span>

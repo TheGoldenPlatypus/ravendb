@@ -6,6 +6,11 @@ internal sealed class Channel
 
     public string? Id { get; set; }
 
+    internal string ShortId =>
+        Id is not null && Id.StartsWith(IdPrefix, StringComparison.Ordinal)
+            ? Id[IdPrefix.Length..]
+            : Id ?? "";
+
     public ChannelType Type { get; set; }
 
     public string DisplayName { get; set; } = "";
@@ -18,7 +23,8 @@ internal sealed class Channel
 
     public DateTime CreatedAt { get; set; }
 
-    public IFrameStyle? Style { get; set; }
+    /// Null means "follow the app-level default" (see <see cref="WidgetThemeResolution"/>). Web-widget only.
+    public WidgetTheme? Theme { get; set; }
 
-    public string? CustomCss { get; set; }
+    public TelegramSettings? Telegram { get; set; }
 }

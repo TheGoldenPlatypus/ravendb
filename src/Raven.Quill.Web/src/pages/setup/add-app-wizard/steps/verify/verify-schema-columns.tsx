@@ -9,12 +9,7 @@ import { TriangleAlertIcon } from "lucide-react";
 import type { DiscoverTableResponse } from "@/api/generated/server-api";
 import { Checkbox } from "@/components/shadcn/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/shadcn/ui/tooltip";
-import {
-    countSelectedRows,
-    getRangeSelectionRows,
-    isRowSelected,
-    setRowsSelected,
-} from "@/components/table/row-range-selection";
+import { countSelectedRows, getRangeSelection, setRowsSelected } from "@/components/table/row-range-selection";
 import { getTableLabel, MAX_SELECTED_TABLES } from "@/pages/setup/add-app-wizard/discover-utils";
 import { Button } from "@/components/shadcn/ui/button";
 
@@ -28,7 +23,7 @@ const TABLE_NAME_COLUMN: ColumnDef<DiscoverTableResponse> = {
             {row.original.warnings.length > 0 && (
                 <Tooltip>
                     <TooltipTrigger asChild>
-                        <Button variant="link" aria-label="Table warnings">
+                        <Button variant="link" aria-label="Table warnings" className="cursor-default px-0">
                             <TriangleAlertIcon
                                 className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400"
                                 aria-hidden="true"
@@ -61,7 +56,8 @@ const COLUMNS_COUNT_COLUMN: ColumnDef<DiscoverTableResponse> = {
 /**
  * Columns of the verified tables table. Built per mounted table rather than shared as a constant so
  * the select column can write the row of the last plain click into `anchorRowIdRef`: a shift-click
- * applies that row's state to everything in between, and the table previews the same range on hover.
+ * spans the rows between that anchor and the clicked row, and the table previews the same span on
+ * hover. The clicked row decides whether the span is selected or cleared - see `getRangeSelection`.
  */
 export function createVerifiedColumns(anchorRowIdRef: RefObject<string | null>): ColumnDef<DiscoverTableResponse>[] {
     return [
@@ -74,21 +70,16 @@ export function createVerifiedColumns(anchorRowIdRef: RefObject<string | null>):
                     // Radix skips its own toggle once a click handler prevents the default, which is
                     // what turns a shift-click into a range selection instead of a single toggle.
                     onClick={(event) => {
-                        const rangeRows = event.shiftKey
-                            ? getRangeSelectionRows(table, anchorRowIdRef.current, row.id, MAX_SELECTED_TABLES)
-                            : [];
+                        const range = event.shiftKey
+                            ? getRangeSelection(table, anchorRowIdRef.current, row.id, MAX_SELECTED_TABLES)
+                            : null;
 
-                        if (rangeRows.length === 0) {
+                        if (range === null || range.rows.length === 0) {
                             return;
                         }
 
                         event.preventDefault();
-                        setRowsSelected(
-                            table,
-                            rangeRows,
-                            isRowSelected(table, anchorRowIdRef.current),
-                            MAX_SELECTED_TABLES,
-                        );
+                        setRowsSelected(table, range.rows, range.isSelecting, MAX_SELECTED_TABLES);
                     }}
                     onCheckedChange={(value) => {
                         row.toggleSelected(!!value);

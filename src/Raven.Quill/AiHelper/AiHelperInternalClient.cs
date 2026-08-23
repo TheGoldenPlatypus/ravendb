@@ -4,6 +4,7 @@ using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.AI.Agents;
 using Raven.Client.Documents.Operations.CdcSink;
 using Microsoft.Extensions.Logging;
+using Raven.Server.ServerWide;
 using Sparrow.Json;
 
 namespace Raven.Quill.AiHelper;
@@ -14,6 +15,8 @@ public sealed class AiHelperInternalClient(
     ILogger<AiHelperInternalClient> logger) : IAiHelperClient
 {
     private const string AssistPath = "/assistant/assist";
+
+    private const string CheckConsentPath = "/assistant/check-consent";
 
     private const string GiveConsentPath = "/assistant/give-consent";
 
@@ -27,7 +30,7 @@ public sealed class AiHelperInternalClient(
             Prompt = prompt,
         };
 
-        var (transport, content) = await SendWithConsentRetryAsync(AssistPath, "POST", request, ct);
+        var (transport, content) = await SendAsync(AssistPath, "POST", request, ct);
         if (transport != AiHelperStatus.Success)
             return new SuggestCdcInternalResult(transport, Configuration: null, [], 0, 0);
 
@@ -55,7 +58,7 @@ public sealed class AiHelperInternalClient(
             Prompt = prompt,
         };
 
-        var (transport, content) = await SendWithConsentRetryAsync(AssistPath, "POST", request, ct);
+        var (transport, content) = await SendAsync(AssistPath, "POST", request, ct);
         if (transport != AiHelperStatus.Success)
             return new SuggestAiAgentInternalResult(transport, [], [], 0, 0);
 
@@ -72,25 +75,18 @@ public sealed class AiHelperInternalClient(
             wire.OutputTokenCount);
     }
 
-    private async Task<(AiHelperStatus Transport, string Content)> SendWithConsentRetryAsync(string path, string method, object request, CancellationToken ct)
+    public async Task<HttpResponseMessage> SendChatAsync(string message, string? conversationId, CancellationToken ct)
     {
-        var result = await SendAsync(path, method, request, ct);
-        if (result.Transport != AiHelperStatus.ConsentRequired)
-            return result;
-
-        var consent = await GiveConsentAsync(ct);
-        if (consent != AiHelperStatus.Success)
-            return (consent, string.Empty);
-
-        var retried = await SendAsync(path, method, request, ct);
-        if (retried.Transport == AiHelperStatus.ConsentRequired)
+        var request = new ChatbotApiRequest
         {
-            logger.LogWarning(
-                "AI Helper {Path}: assist still returns ConsentRequired after give-consent succeeded — propagation lag or cert-thumbprint mismatch.",
-                path);
-        }
+            Message = message,
+            ConversationId = conversationId,
+            RavenVersion = ServerVersion.Build,
+        };
 
-        return retried;
+        using var content = new StringContent(SerializeRequest(request), Encoding.UTF8, "application/json");
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, AssistPath) { Content = content };
+        return await httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, ct);
     }
 
     public async Task<(AiHelperStatus Transport, string Content)> SendAsync(string path, string method, object request, CancellationToken ct)
@@ -125,27 +121,45 @@ public sealed class AiHelperInternalClient(
         }
     }
 
-    private async Task<AiHelperStatus> GiveConsentAsync(CancellationToken ct)
+    public Task<AiHelperStatus> CheckConsentAsync(CancellationToken ct) =>
+        SendConsentRequestAsync(CheckConsentPath, HttpMethod.Get, ct);
+
+    public Task<AiHelperStatus> GiveConsentAsync(CancellationToken ct) =>
+        SendConsentRequestAsync(GiveConsentPath, HttpMethod.Post, ct);
+
+    // Both consent calls answer with a { Status } body — 200 once the service is satisfied, 401 while
+    // it still wants consent or rejects the license — so the status is read out of the body either way.
+    private async Task<AiHelperStatus> SendConsentRequestAsync(string path, HttpMethod method, CancellationToken ct)
     {
         try
         {
-            using var content = new StringContent("{}", Encoding.UTF8, "application/json");
-            using var response = await httpClient.PostAsync(GiveConsentPath, content, ct);
-            if (response.IsSuccessStatusCode)
-                return AiHelperStatus.Success;
+            using var httpRequest = new HttpRequestMessage(method, path);
+            if (method == HttpMethod.Post)
+                httpRequest.Content = new StringContent("{}", Encoding.UTF8, "application/json");
 
+            using var response = await httpClient.SendAsync(httpRequest, ct);
             var text = await response.Content.ReadAsStringAsync(ct);
-            var status = response.StatusCode == HttpStatusCode.Unauthorized
-                ? AiHelperStatus.InvalidCredentials
-                : AiHelperStatus.InternalError;
-            logger.LogWarning("AI Helper give-consent failed: upstream {Code}, mapped {Status}. Body: {Body}",
-                (int)response.StatusCode, status, TruncateForLog(text));
+
+            var status = response.IsSuccessStatusCode
+                ? ParseStatus((await DeserializeAsync<StatusOnly>(text, ct))?.Status)
+                : response.StatusCode == HttpStatusCode.Unauthorized
+                    ? await ClassifyUnauthorizedAsync(text, ct)
+                    : AiHelperStatus.InternalError;
+
+            if (status != AiHelperStatus.Success)
+            {
+                logger.Log(
+                    status == AiHelperStatus.ConsentRequired ? LogLevel.Information : LogLevel.Warning,
+                    "AI Helper {Path}: upstream {Code}, mapped {Status}. Body: {Body}",
+                    path, (int)response.StatusCode, status, TruncateForLog(text));
+            }
+
             return status;
         }
         catch (Exception e) when (e is HttpRequestException ||
                                   (e is OperationCanceledException && ct.IsCancellationRequested == false))
         {
-            logger.LogWarning(e, "AI Helper give-consent failed (transport).");
+            logger.LogWarning(e, "AI Helper {Path} failed (transport).", path);
             return AiHelperStatus.InternalError;
         }
     }
@@ -194,6 +208,14 @@ public sealed class AiHelperInternalClient(
     private sealed class StatusOnly
     {
         public string? Status { get; set; }
+    }
+
+    private sealed class ChatbotApiRequest
+    {
+        public string OperationType { get; set; } = "Chatbot";
+        public string Message { get; set; } = null!;
+        public string? ConversationId { get; set; }
+        public int RavenVersion { get; set; }
     }
 
     private sealed class SuggestCdcApiRequest

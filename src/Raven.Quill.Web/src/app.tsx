@@ -1,5 +1,5 @@
 import { Link, Outlet, useMatches, useParams } from "react-router";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MessageCircle, Sparkles } from "lucide-react";
 import { isAppRouteHandle } from "@/routes";
@@ -9,14 +9,15 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { UserMenu } from "@/components/layout/user-menu";
 import { appRoutes } from "@/lib/app-routes";
-import { useMediaQuery } from "@/lib/use-media-query";
+import { COMPACT_LAYOUT_MEDIA_QUERY, useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
-import { RavenLogo } from "@/components/brand/raven-logo";
+import { QuillMark } from "@/components/brand/quill-logo.tsx";
+import { AssistantPanel } from "@/components/layout/assistant-panel";
+import { ASSISTANT_PANEL_TITLE_ID, useAssistantPinning, useAssistantStore } from "@/components/layout/assistant-store";
 import { ContactSheet } from "@/components/layout/contact-sheet";
 import { Button } from "@/components/shadcn/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/shadcn/ui/tooltip";
 
-const compactSidebarMediaQuery = "(max-width: 63.999rem)";
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "sidebar-collapsed";
 
 function readStoredSidebarCollapsed() {
@@ -25,7 +26,7 @@ function readStoredSidebarCollapsed() {
 
 function App() {
     const { slug } = useParams();
-    const isCompactSidebarViewport = useMediaQuery(compactSidebarMediaQuery);
+    const isCompactSidebarViewport = useMediaQuery(COMPACT_LAYOUT_MEDIA_QUERY);
     const activeRoute = [...useMatches()]
         .reverse()
         .map((match) => match.handle)
@@ -35,6 +36,12 @@ function App() {
         () => shouldCollapseSidebarForRoute || readStoredSidebarCollapsed(),
     );
     const [wasSidebarCollapsedForRoute, setWasSidebarCollapsedForRoute] = useState(shouldCollapseSidebarForRoute);
+    const { isPinned: isAssistantPinned } = useAssistantPinning();
+    const isAssistantOpen = useAssistantStore((state) => state.isOpen);
+    const isAssistantResizing = useAssistantStore((state) => state.isResizing);
+    const assistantWidthPx = useAssistantStore((state) => state.widthPx);
+    const assistantHeightPx = useAssistantStore((state) => state.heightPx);
+    const setAssistantOpen = useAssistantStore((state) => state.setOpen);
 
     // Routes like wizards start with a collapsed sidebar, but the user can still
     // expand it. Restore the stored preference when leaving such a route.
@@ -65,32 +72,31 @@ function App() {
             className={cn(
                 "app-shell bg-surface2 text-foreground dark:bg-surface1",
                 isSidebarEffectivelyCollapsed && "app-shell--collapsed",
+                isAssistantOpen && isAssistantPinned && "app-shell--assistant-open",
+                isAssistantResizing && "app-shell--assistant-resizing",
             )}
+            style={
+                {
+                    "--app-assistant-width": `${assistantWidthPx}px`,
+                    "--app-assistant-height": `${assistantHeightPx}px`,
+                } as CSSProperties
+            }
         >
             <header className="app-shell__header relative px-3 py-2">
                 <div className="flex min-w-0 items-center gap-2">
                     <Link
                         to={appRoutes.dashboard()}
-                        className="flex items-center justify-center rounded-full"
-                        aria-label="Quill home"
+                        className="group flex size-8 items-center justify-center rounded-md"
+                        title="Home"
+                        aria-label="Home"
                     >
-                        <RavenLogo className="size-6" />
+                        <QuillMark className="size-6 text-sidebar-foreground/85 transition-all group-hover:scale-110 group-hover:text-primary" />
                     </Link>
-                    <Link to={appRoutes.dashboard()} className="text-sm font-semibold text-sidebar-foreground">
-                        Quill
-                    </Link>
-                    {breadcrumbLabel && (
-                        <>
-                            <span className="text-sidebar-foreground/40">/</span>
-                            {hasActiveApp && slug ? (
-                                <AppBreadcrumbSwitcher slug={slug} appName={breadcrumbLabel} />
-                            ) : (
-                                <Link to="." className="truncate text-sm font-semibold text-sidebar-foreground">
-                                    {breadcrumbLabel}
-                                </Link>
-                            )}
-                        </>
-                    )}
+                    <span className="text-sidebar-foreground/40">/</span>
+                    {/* One segment, always the switcher: it shows where you are — the app, or the
+                        route that has no app, like the add-application wizard — and opens the app
+                        list. Only a route with no title of its own falls back to the placeholder. */}
+                    <AppBreadcrumbSwitcher slug={slug} appName={breadcrumbLabel} />
                 </div>
 
                 <CommandPalette slug={slug} appName={activeAppLabel} />
@@ -107,15 +113,20 @@ function App() {
                     <TooltipProvider>
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <span
-                                    aria-disabled="true"
-                                    aria-label="AI assistant (coming soon)"
-                                    className="cursor-default text-primary/50 [filter:drop-shadow(0_0_6px_var(--brand-400))]"
+                                <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    onClick={() => setAssistantOpen(!isAssistantOpen)}
+                                    aria-label={isAssistantOpen ? "Close AI assistant" : "Open AI assistant"}
+                                    aria-pressed={isAssistantOpen}
                                 >
-                                    <Sparkles className="size-4" aria-hidden="true" />
-                                </span>
+                                    <Sparkles
+                                        className="text-primary [filter:drop-shadow(0_0_6px_var(--brand-400))]"
+                                        aria-hidden="true"
+                                    />
+                                </Button>
                             </TooltipTrigger>
-                            <TooltipContent>AI assistant (coming soon)</TooltipContent>
+                            <TooltipContent>AI assistant</TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
                     <UserMenu />
@@ -146,6 +157,20 @@ function App() {
                     <Outlet />
                 </div>
             </main>
+
+            {/* Stays mounted while closed so the conversation and draft survive toggling. */}
+            <aside
+                className={cn(
+                    isAssistantPinned
+                        ? "app-shell__assistant"
+                        : "fixed right-4 bottom-4 z-40 flex h-[min(var(--app-assistant-height),calc(100svh-4rem))] w-[min(var(--app-assistant-width),calc(100vw-1rem))] flex-col",
+                    !isAssistantPinned && !isAssistantOpen && "hidden",
+                )}
+                aria-labelledby={ASSISTANT_PANEL_TITLE_ID}
+                inert={!isAssistantOpen}
+            >
+                <AssistantPanel />
+            </aside>
         </div>
     );
 }

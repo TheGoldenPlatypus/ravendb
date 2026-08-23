@@ -111,9 +111,11 @@ COPY docker/quill/nginx.conf /etc/nginx/nginx.conf
 
 COPY docker/quill/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
 COPY docker/quill/scripts/proxy-certs.sh /usr/local/bin/proxy-certs
+COPY docker/quill/scripts/cert-chain.sh /usr/local/bin/cert-chain
 COPY docker/quill/scripts/svc-log.sh /usr/local/bin/svc-log
 RUN chmod +x /etc/s6-overlay/s6-rc.d/*/run \
              /usr/local/bin/proxy-certs \
+             /usr/local/bin/cert-chain \
              /usr/local/bin/svc-log
 
 EXPOSE 443
@@ -133,6 +135,7 @@ ENV S6_VERBOSITY=0 \
     RAVEN_QUILL_SETUP_PACKAGE_PATH=/var/lib/quill/setup \
     RAVEN_QUILL_RAVENDB_S6_SERVICE=/run/service/01-ravendb \
     RAVEN_QUILL_RAVENDB_INTERNAL_PORT=8443 \
+    RAVEN_QUILL_RAVENDB_PROXY_PORT=8447 \
     RAVEN_DataDir=/var/lib/quill/ravendb \
     RAVEN_Logs_Path=/var/lib/quill/logs/ravendb-server \
     RAVEN_QUILL_STARTUP_GRACE_SECONDS=180

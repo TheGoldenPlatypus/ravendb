@@ -20,6 +20,7 @@ import {
 import { TableEditor } from "@/pages/setup/add-app-wizard/steps/map-tables/table-editor";
 import { TablesExplorer } from "@/pages/setup/add-app-wizard/steps/map-tables/tables-explorer";
 import { UnmappedTablesAlert } from "@/pages/setup/add-app-wizard/steps/map-tables/unmapped-tables-alert";
+import { UnselectedMappedTablesAlert } from "@/pages/setup/add-app-wizard/steps/map-tables/unselected-mapped-tables-alert";
 import { useApplyMapTables } from "@/pages/setup/add-app-wizard/steps/map-tables/use-apply-map-tables";
 import { useFocusMapTablesError } from "@/pages/setup/add-app-wizard/steps/map-tables/use-focus-map-tables-error";
 import { useSuggestedMapTables } from "@/pages/setup/add-app-wizard/steps/map-tables/use-suggested-map-tables";
@@ -117,6 +118,16 @@ export function MapTablesStep({ isBusy }: WizardBodyComponentProps) {
                     </Field>
                 </div>
 
+                {/* Derived from form state, which raw edits keep in sync, so they belong to both views.
+                    Skipped only while the editor holds JSON that has not parsed yet: the form then
+                    still carries the previous mapping, which is not what the operator is looking at. */}
+                {!isFormBehindEditor && (
+                    <>
+                        <UnmappedTablesAlert />
+                        <UnselectedMappedTablesAlert />
+                    </>
+                )}
+
                 {isRawView ? (
                     <AceEditor
                         mode="json"
@@ -131,7 +142,6 @@ export function MapTablesStep({ isBusy }: WizardBodyComponentProps) {
                     />
                 ) : (
                     <>
-                        <UnmappedTablesAlert />
                         <ResizablePanelGroup
                             orientation="horizontal"
                             className="min-h-80 flex-1 rounded-lg border bg-background"

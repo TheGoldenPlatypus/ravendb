@@ -15,6 +15,8 @@ import { ConnectSourceStep } from "@/pages/setup/add-app-wizard/steps/connect/co
 import { MapSchemaStep } from "@/pages/setup/add-app-wizard/steps/map/map-schema-step";
 import { MapTablesStep } from "@/pages/setup/add-app-wizard/steps/map-tables/map-tables-step";
 import { PreviewStep } from "@/pages/setup/add-app-wizard/steps/preview/preview-step";
+import { ExportConfigAction } from "@/pages/setup/add-app-wizard/steps/preview/export-config-action";
+import { ImportConfigHeaderAction } from "@/pages/setup/add-app-wizard/steps/connect/import-config-header-action";
 import { VerifySchemaStep } from "@/pages/setup/add-app-wizard/steps/verify/verify-schema-step";
 import { useConnectSourceStep } from "@/pages/setup/add-app-wizard/steps/connect/use-connect-source-step";
 import { useMapSchemaStep } from "@/pages/setup/add-app-wizard/steps/map/use-map-schema-step";
@@ -23,6 +25,7 @@ import { useMapTablesStep } from "@/pages/setup/add-app-wizard/steps/map-tables/
 import { useIsMapTablesNextDisabled } from "@/pages/setup/add-app-wizard/steps/map-tables/use-suggested-map-tables";
 import { useIsVerifyCdcRunning, useVerifyCdcStep } from "@/pages/setup/add-app-wizard/steps/verify/use-verify-cdc-step";
 import { useVerifySchemaStep } from "@/pages/setup/add-app-wizard/steps/verify/use-verify-schema-step";
+import { VerifySelectionChangedBadge } from "@/pages/setup/add-app-wizard/steps/verify/verify-selection-changed-badge";
 
 export const useAppSteps = (): WizardSteps<AppStepId, AppFormData> => {
     const connectSourceBeforeNext = useConnectSourceStep();
@@ -51,6 +54,7 @@ export const useAppSteps = (): WizardSteps<AppStepId, AppFormData> => {
         externalConnection: {
             title: "Connect to your source database",
             bodyComponent: ConnectSourceStep,
+            headerAction: ImportConfigHeaderAction,
             validate: "externalConnection",
             beforeNext: connectSourceBeforeNext,
             badgeFields: [],
@@ -77,6 +81,8 @@ export const useAppSteps = (): WizardSteps<AppStepId, AppFormData> => {
             },
             // Advancing mid-run would carry a selection the dry run has not answered for yet.
             isNextDisabled: isVerifyCdcRunning,
+            badgeFields: ["verifySchema.tables"],
+            badge: ({ values }) => <VerifySelectionChangedBadge tables={values.verifySchema.tables} />,
         },
         map: {
             title: "How would you like to map your schema?",
@@ -107,6 +113,7 @@ export const useAppSteps = (): WizardSteps<AppStepId, AppFormData> => {
             description:
                 "Ingest chosen number of rows per root table into a throwaway namespace so you can check shape before the real load.",
             bodyComponent: PreviewStep,
+            footerComponent: ExportConfigAction,
             validate: "preview",
         },
     };

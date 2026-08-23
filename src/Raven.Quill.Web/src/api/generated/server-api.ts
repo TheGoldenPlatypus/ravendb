@@ -84,6 +84,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assistant/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["assistant.chat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["assistant.consent"];
+        put?: never;
+        post: operations["assistant.giveConsent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bootstrap/status": {
         parameters: {
             query?: never;
@@ -994,6 +1026,8 @@ export interface components {
             subConversationId?: null | string;
         };
         /** @enum {unknown} */
+        AiHelperStatus: "Success" | "InvalidCredentials" | "InvalidData" | "ConsentRequired" | "OutOfTokens" | "InternalError";
+        /** @enum {unknown} */
         AiMessageRole: "system" | "user" | "assistant" | "summary" | "internal";
         AiModelsRequest: {
             connectorType?: components["schemas"]["AiConnectorType"];
@@ -1104,6 +1138,13 @@ export interface components {
             slug: string;
             /** Format: int64 */
             writes: number;
+        };
+        AssistantChatRequest: {
+            message: string;
+            conversationId: null | string;
+        };
+        AssistantConsentResponse: {
+            status: components["schemas"]["AiHelperStatus"];
         };
         AuthStatusResponse: {
             authenticated: boolean;
@@ -1938,6 +1979,104 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    "assistant.chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantChatRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    "assistant.consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantConsentResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    "assistant.giveConsent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantConsentResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3903,6 +4042,7 @@ export type AiConnectionStringDeleteConflictResponse = components["schemas"]["Ai
 export type AiConnectionStringTestResponse = components["schemas"]["AiConnectionStringTestResponse"];
 export type AiConnectorType = components["schemas"]["AiConnectorType"];
 export type AiConversationMessage = components["schemas"]["AiConversationMessage"];
+export type AiHelperStatus = components["schemas"]["AiHelperStatus"];
 export type AiMessageRole = components["schemas"]["AiMessageRole"];
 export type AiModelsRequest = components["schemas"]["AiModelsRequest"];
 export type AiModelsResponse = components["schemas"]["AiModelsResponse"];
@@ -3919,6 +4059,8 @@ export type AppTokens = components["schemas"]["AppTokens"];
 export type AppUsageMetrics = components["schemas"]["AppUsageMetrics"];
 export type AppUsageResponse = components["schemas"]["AppUsageResponse"];
 export type AppWrites = components["schemas"]["AppWrites"];
+export type AssistantChatRequest = components["schemas"]["AssistantChatRequest"];
+export type AssistantConsentResponse = components["schemas"]["AssistantConsentResponse"];
 export type AuthStatusResponse = components["schemas"]["AuthStatusResponse"];
 export type AzureOpenAiSettings = components["schemas"]["AzureOpenAiSettings"];
 export type BootstrapPhase = components["schemas"]["BootstrapPhase"];
@@ -4054,6 +4196,11 @@ export const API_ENDPOINTS = {
         setupTry: (slug: string) => `/apps/${encodeURIComponent(slug)}/setup/try`,
         suggestAgent: (slug: string) => `/apps/${encodeURIComponent(slug)}/suggest/agent`,
     },
+    assistant: {
+        chat: "/assistant/chat",
+        consent: "/assistant/consent",
+        giveConsent: "/assistant/consent",
+    },
     auth: {
         login: "/auth/login",
         logout: "/auth/logout",
@@ -4144,6 +4291,11 @@ export function createServerApi(client: ApiClient) {
             provisionAgent: (slug: string, request: EditAgentRequest) => client.post<ProvisionAgentResponse, ApiErrorResponse>(API_ENDPOINTS.apps.provisionAgent(slug), request),
             setupTry: (slug: string, request: SetupTryRequest) => client.post<void, ApiErrorResponse>(API_ENDPOINTS.apps.setupTry(slug), request),
             suggestAgent: (slug: string, request: SuggestAgentRequest) => client.post<SuggestAgentResponse, ApiErrorResponse>(API_ENDPOINTS.apps.suggestAgent(slug), request),
+        },
+        assistant: {
+            chat: (request: AssistantChatRequest) => client.post<void, ApiErrorResponse>(API_ENDPOINTS.assistant.chat, request),
+            consent: () => client.get<AssistantConsentResponse, ApiErrorResponse>(API_ENDPOINTS.assistant.consent),
+            giveConsent: () => client.post<AssistantConsentResponse, ApiErrorResponse>(API_ENDPOINTS.assistant.giveConsent),
         },
         auth: {
             login: (request: LoginRequest) => client.post<AuthStatusResponse, AuthStatusResponse>(API_ENDPOINTS.auth.login, request),

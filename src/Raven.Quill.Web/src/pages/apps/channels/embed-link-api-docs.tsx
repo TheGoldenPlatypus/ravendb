@@ -1,9 +1,7 @@
 import { useState } from "react";
-import { ChevronDown, ShieldAlertIcon } from "lucide-react";
-import { CopyableCode } from "@/components/data/copyable-code";
+import { ShieldAlertIcon } from "lucide-react";
+import { CodeBlockTabs } from "@/components/data/code-block-tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/shadcn/ui/alert";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/shadcn/ui/collapsible";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/shadcn/ui/tabs";
 import { originForSubdomain } from "@/lib/subdomain-origin";
 import {
     buildMintEmbedLinkUrl,
@@ -16,10 +14,15 @@ import {
 } from "@/pages/apps/channels/embed-link-utils";
 import { buildBackedHostPageSnippet } from "@/pages/apps/channels/embed-host-page-snippets";
 import { InlineCode } from "@/components/data/inline-code";
+import { NumberedSteps } from "@/components/data/numbered-steps";
+import { SectionCard } from "@/pages/apps/section-card";
 import type { HighlightLanguage } from "@/components/ace-editor/static-highlight";
 
-const OPEN_STORAGE_KEY = "quill-embed-api-docs-open";
 const LANGUAGE_STORAGE_KEY = "quill-embed-api-docs-language";
+
+// The host page snippet grows to its natural height, but never shrinks below this so the block still
+// reads as a code viewport.
+const HOST_PAGE_MIN_LINES = 16;
 
 type Language = "bash" | "powershell" | "csharp" | "python" | "node";
 
@@ -37,10 +40,6 @@ const LANGUAGE_OPTIONS: LanguageOption[] = [
     { value: "node", label: "Node.js", mode: "javascript" },
 ];
 
-function readIsOpen() {
-    return localStorage.getItem(OPEN_STORAGE_KEY) !== "false";
-}
-
 function readLanguage(): Language {
     const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
     return LANGUAGE_OPTIONS.some((language) => language.value === stored) ? (stored as Language) : "bash";
@@ -57,13 +56,7 @@ export function EmbedLinkApiDocs({ slug, channelId, parameterNames }: EmbedLinkA
     const requests = buildRequestSnippets(slug, channelId, parameterNames);
     const embedOrigin = originForSubdomain("public");
 
-    const [isOpen, setIsOpen] = useState(readIsOpen);
     const [language, setLanguage] = useState<Language>(readLanguage);
-
-    const onOpenChange = (open: boolean) => {
-        localStorage.setItem(OPEN_STORAGE_KEY, String(open));
-        setIsOpen(open);
-    };
 
     const onLanguageChange = (value: string) => {
         const next = value as Language;
@@ -92,81 +85,107 @@ export function EmbedLinkApiDocs({ slug, channelId, parameterNames }: EmbedLinkA
     ];
 
     return (
-        <Collapsible open={isOpen} onOpenChange={onOpenChange} className="rounded-md border bg-card p-4">
-            <h2 className="text-sm font-semibold">
-                <CollapsibleTrigger className="group flex w-full items-center justify-between gap-3 rounded-sm text-left focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none">
-                    Embed on your own site
-                    <ChevronDown
-                        className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
-                        aria-hidden="true"
-                    />
-                </CollapsibleTrigger>
-            </h2>
+        <SectionCard title="Embed on your own site" isRaised>
+            <div className="mt-4">
+                <NumberedSteps
+                    steps={[
+                        {
+                            title: "Mint links from your backend",
+                            content: (
+                                <>
+                                    <p className="max-w-prose text-sm text-muted-foreground">
+                                        Your server POSTs to the embed-links endpoint with your operator key in the{" "}
+                                        <InlineCode>X-Api-Key</InlineCode> header, then hands the page nothing but the
+                                        returned <InlineCode>url</InlineCode>. The app and channel are already filled in
+                                        below - swap in your <InlineCode>QUILL_API_KEY</InlineCode>
+                                        {hasParameters ? " and the parameter values" : ""}.
+                                    </p>
 
-            <CollapsibleContent className="mt-4 grid gap-8">
-                <section className="grid gap-4">
-                    <div className="grid gap-1">
-                        <h3 className="text-sm font-medium">Mint links from your backend</h3>
-                        <p className="text-sm text-muted-foreground">
-                            Your server POSTs to the embed-links endpoint with your operator key in the{" "}
-                            <InlineCode>X-Api-Key</InlineCode> header, then hands the page nothing but the returned{" "}
-                            <InlineCode>url</InlineCode>. The app and channel are already filled in below - swap in your{" "}
-                            <InlineCode>QUILL_API_KEY</InlineCode>
-                            {hasParameters ? " and the parameter values" : ""}.
-                        </p>
-                    </div>
+                                    <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                                        <CodeBlockTabs
+                                            value={language}
+                                            onValueChange={onLanguageChange}
+                                            copyLabel="Copy server-side mint request"
+                                            tabs={LANGUAGE_OPTIONS.map(({ value, label, mode }) => ({
+                                                value,
+                                                label,
+                                                language: mode,
+                                                code: requests[value],
+                                            }))}
+                                        />
+                                        <ParametersPanel fields={fields} />
+                                    </div>
 
-                    <Tabs value={language} onValueChange={onLanguageChange} className="gap-3">
-                        <TabsList>
-                            {LANGUAGE_OPTIONS.map(({ value, label }) => (
-                                <TabsTrigger key={value} value={value}>
-                                    {label}
-                                </TabsTrigger>
-                            ))}
-                        </TabsList>
-                        {LANGUAGE_OPTIONS.map(({ value, mode }) => (
-                            <TabsContent key={value} value={value}>
-                                <Alert variant="warning" className="mb-2">
-                                    <ShieldAlertIcon />
-                                    <AlertTitle>Run this on your server, never in a browser</AlertTitle>
-                                    <AlertDescription>
-                                        The operator key grants full access to every app, not just this widget, so it
-                                        must never be shipped to a page or called from client-side JavaScript. The
-                                        endpoint also sends no CORS headers, so a browser <InlineCode>fetch</InlineCode>{" "}
-                                        to it fails on preflight regardless.
-                                    </AlertDescription>
-                                </Alert>
-                                <CopyableCode
-                                    code={requests[value]}
-                                    language={mode}
-                                    copyLabel="Copy server-side mint request"
-                                />
-                            </TabsContent>
-                        ))}
-                    </Tabs>
-                    <dl className="grid gap-2 text-sm">
-                        {fields.map((field) => (
-                            <div key={field.name} className="grid gap-x-3 sm:grid-cols-[8rem_1fr]">
-                                <dt className="font-mono text-xs font-medium text-muted-foreground">{field.name}</dt>
-                                <dd className="text-muted-foreground">{field.description}</dd>
-                            </div>
-                        ))}
-                    </dl>
+                                    <Alert variant="warning" className="mt-4">
+                                        <ShieldAlertIcon />
+                                        <AlertTitle>Run this on your server, never in a browser</AlertTitle>
+                                        <AlertDescription>
+                                            The operator key grants full access to every app, not just this widget, so
+                                            it must never be shipped to a page or called from client-side JavaScript.
+                                            <br /> The endpoint also sends no CORS headers, so a browser{" "}
+                                            <InlineCode>fetch</InlineCode> to it fails on preflight regardless.
+                                        </AlertDescription>
+                                    </Alert>
+                                </>
+                            ),
+                        },
+                        {
+                            title: "Show the link in your page",
+                            content: (
+                                <>
+                                    <p className="max-w-prose text-sm text-muted-foreground">
+                                        Then in the page, point an iframe at the <InlineCode>url</InlineCode> your
+                                        endpoint returned:
+                                    </p>
+                                    <CodeBlockTabs
+                                        value="html"
+                                        copyLabel="Copy host page"
+                                        minLines={HOST_PAGE_MIN_LINES}
+                                        className="mt-3"
+                                        tabs={[
+                                            {
+                                                value: "html",
+                                                label: "Host page",
+                                                language: "html",
+                                                code: buildBackedHostPageSnippet(embedOrigin),
+                                            },
+                                        ]}
+                                    />
+                                </>
+                            ),
+                        },
+                    ]}
+                />
+            </div>
+        </SectionCard>
+    );
+}
 
-                    <div className="grid gap-2">
-                        <p className="text-sm">
-                            Then in the page, point an iframe at the <InlineCode>url</InlineCode> your endpoint
-                            returned:
-                        </p>
-                        <CopyableCode
-                            code={buildBackedHostPageSnippet(embedOrigin)}
-                            language="html"
-                            copyLabel="Copy host page"
-                        />
-                    </div>
-                </section>
-            </CollapsibleContent>
-        </Collapsible>
+// The request parameters, shown as an always-expanded panel beside the code block so the user keeps a
+// quick reference in view. Mirrors the code card's header/border so the two-column row stays balanced.
+//
+// On lg the two columns share a grid row, so the code block sets the row height. The panel absolutely
+// fills that height (its own content no longer grows the row) and the list scrolls when it overflows —
+// so a long parameter list can never make this column taller than the code block. Below lg the columns
+// stack and the panel takes its natural height.
+function ParametersPanel({ fields }: { fields: { name: string; description: string }[] }) {
+    return (
+        <div className="min-w-0 lg:relative">
+            <div className="flex flex-col overflow-hidden rounded-lg border lg:absolute lg:inset-0">
+                <div className="border-b bg-muted/50 px-3 py-2.5 text-xs font-medium">Parameters</div>
+                <dl className="min-h-0 flex-1 divide-y divide-border overflow-y-auto text-sm">
+                    {fields.map((field) => (
+                        <div
+                            key={field.name}
+                            className="grid items-baseline gap-x-3 px-3 py-2.5 sm:grid-cols-[8rem_1fr]"
+                        >
+                            <dt className="font-mono text-xs font-medium text-muted-foreground">{field.name}</dt>
+                            <dd className="text-muted-foreground">{field.description}</dd>
+                        </div>
+                    ))}
+                </dl>
+            </div>
+        </div>
     );
 }
 

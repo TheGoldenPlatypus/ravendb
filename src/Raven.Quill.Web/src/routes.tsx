@@ -10,7 +10,6 @@ import {
     MessagesSquare,
     Network,
     Plug,
-    Settings,
     ShieldCheck,
     Sparkles,
     type LucideIcon,
@@ -24,12 +23,10 @@ import { AppAgentEdit } from "@/pages/apps/app-agent-edit";
 import { AppAgents } from "@/pages/apps/app-agents";
 import { AppChannelDetail } from "@/pages/apps/app-channel-detail";
 import { AppChannels } from "@/pages/apps/app-channels";
-import { AppWebWidgetCustomize } from "@/pages/apps/app-web-widget-customize";
 import { AppWebWidgetDefaultCustomize } from "@/pages/apps/app-web-widget-default-customize";
 import { AppConversations } from "@/pages/apps/app-conversations";
 import { AppDataSource } from "@/pages/apps/app-data-source";
 import { AppOverview } from "@/pages/apps/app-overview";
-import { AppSettings } from "@/pages/apps/app-settings";
 import { AppAnalytics } from "@/pages/apps/app-analytics";
 import { Login } from "@/pages/auth/login";
 import { DashboardCertificates } from "@/pages/dashboard/certificates";
@@ -185,6 +182,7 @@ const appPages: AppRouteDefinition[] = [
             icon: Database,
             section: "database",
         },
+        isPageTitleHidden: true,
         element: <AppDataSource />,
     },
     {
@@ -203,6 +201,7 @@ const appPages: AppRouteDefinition[] = [
         // reached by editing an agent from the Agents list.
         path: "agents/:agentId/edit",
         title: "Edit agent",
+        isPageTitleHidden: true,
         element: <AppAgentEdit />,
     },
     {
@@ -248,22 +247,18 @@ const appPages: AppRouteDefinition[] = [
         element: <AppChannels />,
     },
     {
-        // Channel detail — active embed links for one channel. No navigation entry:
-        // reached by opening a channel from the Channels list.
+        // Channel detail — configuration, active embed links, and appearance tabs for one channel.
+        // No navigation entry: reached by opening a channel from the Channels list.
         path: "channels/:channelId",
         title: "Channel",
+        isPageTitleHidden: true,
         element: <AppChannelDetail />,
-    },
-    {
-        // Per-widget embed styling editor + live preview. Reached from channel detail.
-        path: "web-widget/:channelId/customize",
-        title: "Web widget appearance",
-        element: <AppWebWidgetCustomize />,
     },
     {
         // App-level default web-widget styling. Reached from the Channels list.
         path: "web-widget/default-customize",
         title: "Default web widget appearance",
+        isPageTitleHidden: true,
         element: <AppWebWidgetDefaultCustomize />,
     },
     {
@@ -275,16 +270,6 @@ const appPages: AppRouteDefinition[] = [
             section: "settings",
         },
         element: <AppAnalytics />,
-    },
-    {
-        path: "settings",
-        title: "Settings",
-        navigation: {
-            label: "Settings",
-            icon: Settings,
-            section: "settings",
-        },
-        element: <AppSettings />,
     },
 ];
 

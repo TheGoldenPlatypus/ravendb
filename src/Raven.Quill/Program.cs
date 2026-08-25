@@ -18,6 +18,7 @@ using Raven.Quill.Feedback;
 using Raven.Quill.Hosting;
 using Raven.Quill.Infrastructure;
 using Raven.Quill.Licensing;
+using Raven.Quill.Slack;
 using Raven.Quill.Telegram;
 using Raven.Client.Documents;
 
@@ -76,6 +77,7 @@ builder.Services.AddOptions<ApplianceOptions>()
         ReadEnv("RAVEN_QUILL_RAVENDB_S6_SERVICE", v => options.RavenDbS6Service = v);
         ReadEnv("RAVEN_QUILL_API_URL", v => options.AiApiUrl = v);
         ReadEnv("RAVEN_QUILL_TELEGRAM_API_URL", v => options.Telegram.ApiUrl = v);
+        ReadEnv("RAVEN_QUILL_SLACK_API_URL", v => options.Slack.ApiUrl = v);
         ReadEnv("QUILL_LICENSE_KEY", v => options.LicenseKey = v);
         ReadEnv("QUILL_API_KEY", v => options.ApiKey = v);
         ReadEnv("RAVEN_QUILL_RAVENDB_INTERNAL_PORT", v =>
@@ -98,19 +100,33 @@ builder.Services.AddOptions<ApplianceOptions>()
                    Uri.TryCreate(o.Telegram.ApiUrl, UriKind.Absolute, out var u) &&
                    (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps),
         "Telegram ApiUrl must be an absolute http(s) URL")
-    .Validate(o => o.Telegram.MessageLimit is > 0 and <= TelegramMessageSplitter.TelegramApiMessageLimit,
-        $"Telegram MessageLimit must be between 1 and {TelegramMessageSplitter.TelegramApiMessageLimit}")
+    .Validate(o => o.Telegram.MessageLimit is > 0 and <= TelegramOptions.ApiMessageLimit,
+        $"Telegram MessageLimit must be between 1 and {TelegramOptions.ApiMessageLimit}")
     .Validate(o => o.Telegram.ChatQueueCapacity > 0, "Telegram ChatQueueCapacity must be positive")
     .Validate(o => o.Telegram.EditDebounce > TimeSpan.Zero, "Telegram EditDebounce must be positive")
     .Validate(o => o.Telegram.ApplyChangesInterval > TimeSpan.Zero, "Telegram ApplyChangesInterval must be positive")
     .Validate(o => o.Telegram.ChatIdleTimeout > TimeSpan.Zero, "Telegram ChatIdleTimeout must be positive")
     .Validate(o => o.Telegram.PollBackoffMax > TimeSpan.Zero, "Telegram PollBackoffMax must be positive")
+    .Validate(o => Uri.TryCreate(o.Slack.ApiUrl, UriKind.Absolute, out var u) &&
+                   (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps),
+        "Slack ApiUrl must be an absolute http(s) URL")
+    .Validate(o => o.Slack.RequestTimeout > TimeSpan.Zero, "Slack RequestTimeout must be positive")
+    .Validate(o => o.Slack.MaxWebhookBodyBytes > 0, "Slack MaxWebhookBodyBytes must be positive")
+    .Validate(o => o.Slack.MessageLimit is > 0 and <= SlackOptions.ApiMessageLimit / SlackMrkdwn.MaxEscapeExpansion,
+        $"Slack MessageLimit must be between 1 and {SlackOptions.ApiMessageLimit / SlackMrkdwn.MaxEscapeExpansion}, " +
+        "so the worst-case mrkdwn escape stays within Slack's message cap")
+    .Validate(o => o.Slack.EditDebounce > TimeSpan.Zero, "Slack EditDebounce must be positive")
+    .Validate(o => o.Slack.SenderQueueCapacity > 0, "Slack SenderQueueCapacity must be positive")
+    .Validate(o => o.Slack.SignatureTolerance > TimeSpan.Zero, "Slack SignatureTolerance must be positive")
     .ValidateOnStart();
 
 builder.Services.AddSingleton<IDocumentStore>(sp =>
     RavenStoreFactory.Create(sp.GetRequiredService<IOptions<ApplianceOptions>>().Value));
 
 builder.Services.AddSingleton<IServerReady, ServerReadyFlag>();
+builder.Services.AddSingleton<IQuillExpiry>(_ => new QuillExpiry(DateTime.UtcNow));
+// Resolved only by an expired build's gate, so a live start never reads the file.
+builder.Services.AddSingleton(sp => ExpiryNotice.Load(sp.GetRequiredService<IWebHostEnvironment>()));
 builder.Services.AddSingleton<IBootstrapState, BootstrapStateFlag>();
 builder.Services.AddSingleton<IAgentRouter, AgentRouter>();
 builder.Services.AddSingleton<WebhookActionExecutor>();
@@ -124,6 +140,9 @@ builder.Services.AddSingleton(sp => WidgetAssets.Load(
 builder.Services.AddTransient<IFeedbackSender, FeedbackSender>();
 builder.Services.AddTransient<ILicenseStatsProvider, LicenseStatsProvider>();
 builder.Services.AddSingleton<ITelegramBotClientFactory, TelegramBotClientFactory>();
+builder.Services.AddSingleton<SlackHealthRegistry>();
+builder.Services.AddSingleton<SlackUserDirectory>();
+builder.Services.AddSingleton<SlackInboundProcessor>();
 builder.Services.AddSingleton<TelegramChannelManager>();
 builder.Services.AddSingleton<ITelegramChannelManager>(sp => sp.GetRequiredService<TelegramChannelManager>());
 if (!isOpenApiDocumentGeneration)
@@ -131,6 +150,7 @@ if (!isOpenApiDocumentGeneration)
     builder.Services.AddHostedService<RavenReadinessService>();
     builder.Services.AddHostedService<ApplianceActivationService>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<TelegramChannelManager>());
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<SlackInboundProcessor>());
 }
 
 builder.Services.ConfigureHttpClientDefaults(httpBuilder =>
@@ -143,6 +163,14 @@ builder.Services.ConfigureHttpClientDefaults(httpBuilder =>
 
 builder.Services.AddHttpClient(WebhookActionExecutor.ClientName,
     static http => http.Timeout = TimeSpan.FromSeconds(30));
+
+builder.Services.AddHttpClient<ISlackClient, SlackApiClient>(static (sp, http) =>
+{
+    var opts = sp.GetRequiredService<IOptions<ApplianceOptions>>().Value.Slack;
+    http.BaseAddress = new Uri(opts.ApiUrl.EndsWith('/') ? opts.ApiUrl : opts.ApiUrl + "/");
+    http.Timeout = opts.RequestTimeout;
+});
+
 
 builder.Services.AddHttpClient<IAiHelperClient, AiHelperInternalClient>(static (sp, http) =>
     {
@@ -192,6 +220,17 @@ builder.Services.AddRateLimiter(options =>
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+
+    options.AddPolicy(SlackEndpoints.WebhookRateLimitPolicy, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? httpContext.Connection.Id,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 600,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+
 
     options.AddPolicy(AuthEndpoints.LoginRateLimitPolicy, httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
@@ -257,6 +296,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseForwardedHeaders();
 
+app.UseExpiryGate();
+
 app.UseWebSockets();
 
 app.UseReadinessGate();
@@ -270,6 +311,7 @@ BootstrapEndpoints.Map(app);
 AuthEndpoints.Map(app);
 AppsEndpoints.Map(app);
 ChannelsEndpoints.Map(app);
+SlackEndpoints.Map(app);
 IFrameCustomizationEndpoints.Map(app);
 EmbedLinksEndpoints.Map(app);
 AiConnectionStringsEndpoints.Map(app);

@@ -373,6 +373,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/apps/{slug}/channels/{channelId}/slack/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The event subscription configuration for this channel: the public request URL, ready to paste into the Slack app's Event Subscriptions page. */
+        get: operations["slack.webhookInfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/apps/{slug}/slack/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Per-channel connection health for the app's Slack channels: bot token validity (cached a few minutes) plus in-memory webhook and send activity since the last restart. */
+        get: operations["slack.health"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/apps/{slug}/iframe/{channelId}/theme": {
         parameters: {
             query?: never;
@@ -1283,6 +1317,12 @@ export interface components {
             };
             disabled: boolean;
         };
+        ChannelParameterBinding: {
+            source?: components["schemas"]["ChannelParameterSource"];
+            value?: null | string;
+        };
+        /** @enum {unknown} */
+        ChannelParameterSource: "Constant" | "UserId" | "Username" | "PhoneNumber" | "Email";
         ChannelStatsResponse: {
             /** Format: int32 */
             total: number;
@@ -1299,9 +1339,10 @@ export interface components {
             createdAt: string;
             allowedOrigins: string[];
             telegram?: null | components["schemas"]["TelegramSummaryResponse"];
+            slack?: null | components["schemas"]["SlackSummaryResponse"];
         };
         /** @enum {unknown} */
-        ChannelType: "IFrame" | "Telegram" | "WhatsApp" | null;
+        ChannelType: "IFrame" | "Telegram" | "WhatsApp" | "Slack" | null;
         ChatRequest: {
             agentId: string;
             prompt: string;
@@ -1430,6 +1471,14 @@ export interface components {
             maxInvocations: number;
             /** Format: int32 */
             invocationCount: number;
+        };
+        GenerateClientCertificateRequest: {
+            name: string;
+            clearance: components["schemas"]["SecurityClearance"];
+            password: null | string;
+            permissions: {
+                [key: string]: components["schemas"]["DatabaseAccess"];
+            };
         };
         /** @enum {unknown} */
         GoogleAIVersion: "V1" | "V1_Beta" | null;
@@ -1561,6 +1610,7 @@ export interface components {
             allowedOrigins: null | string[];
             displayName?: null | string;
             telegram?: null | components["schemas"]["TelegramProvisionRequest"];
+            slack?: null | components["schemas"]["SlackProvisionRequest"];
         };
         ProvisionChannelResponse: {
             channelId: string;
@@ -1582,6 +1632,8 @@ export interface components {
             to: string;
             /** Format: int64 */
             usage: number;
+            /** @default false */
+            isSystem: boolean;
         };
         QuillPeriodUsage: {
             /** Format: date-time */
@@ -1640,6 +1692,47 @@ export interface components {
             };
             streamField?: null | string;
         };
+        SlackChannelHealthResponse: {
+            channelId: string;
+            teamId: string;
+            teamName: string;
+            botUserId: string;
+            enabled: boolean;
+            tokenValid: null | boolean;
+            tokenError: null | string;
+            /** Format: date-time */
+            lastInboundAt: null | string;
+            /** Format: date-time */
+            lastSignatureFailureAt: null | string;
+            /** Format: date-time */
+            lastSendErrorAt: null | string;
+            lastSendError: null | string;
+        };
+        SlackProvisionRequest: {
+            botToken: null | string;
+            signingSecret: null | string;
+            parameterBindings?: null | {
+                [key: string]: components["schemas"]["ChannelParameterBinding"];
+            };
+        };
+        SlackSummaryResponse: {
+            teamId: string;
+            teamName: string;
+            botUserId: string;
+            parameterBindings: {
+                [key: string]: components["schemas"]["ChannelParameterBinding"];
+            };
+        };
+        SlackUpdateRequest: {
+            botToken?: null | string;
+            signingSecret?: null | string;
+            parameterBindings?: null | {
+                [key: string]: components["schemas"]["ChannelParameterBinding"];
+            };
+        };
+        SlackWebhookInfoResponse: {
+            requestUrl: string;
+        };
         SuggestAgentRequest: {
             intentPrompt: null | string;
             mode: string;
@@ -1673,22 +1766,16 @@ export interface components {
             somethingWentWrong?: null | string;
             groupChatRefusal?: null | string;
         };
-        TelegramParameterBinding: {
-            source?: components["schemas"]["TelegramParameterSource"];
-            value?: null | string;
-        };
-        /** @enum {unknown} */
-        TelegramParameterSource: "Constant" | "UserId" | "Username" | "PhoneNumber";
         TelegramProvisionRequest: {
             botToken: null | string;
             parameterBindings?: null | {
-                [key: string]: components["schemas"]["TelegramParameterBinding"];
+                [key: string]: components["schemas"]["ChannelParameterBinding"];
             };
         };
         TelegramSummaryResponse: {
             botUsername: string;
             parameterBindings: {
-                [key: string]: components["schemas"]["TelegramParameterBinding"];
+                [key: string]: components["schemas"]["ChannelParameterBinding"];
             };
             messages: null | components["schemas"]["TelegramChannelMessages"];
         };
@@ -1696,7 +1783,7 @@ export interface components {
             botToken?: null | string;
             messages?: null | components["schemas"]["TelegramChannelMessages"];
             parameterBindings?: null | {
-                [key: string]: components["schemas"]["TelegramParameterBinding"];
+                [key: string]: components["schemas"]["ChannelParameterBinding"];
             };
         };
         TestMappingRequest: {
@@ -1740,6 +1827,7 @@ export interface components {
             allowedOrigins: null | string[];
             enabled: null | boolean;
             telegram?: null | components["schemas"]["TelegramUpdateRequest"];
+            slack?: null | components["schemas"]["SlackUpdateRequest"];
         };
         UpdateWidgetThemeRequest: {
             theme: null | components["schemas"]["WidgetTheme"];
@@ -2694,6 +2782,69 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    "slack.webhookInfo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                channelId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlackWebhookInfoResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    "slack.health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlackChannelHealthResponse"][];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
         };
@@ -3673,25 +3824,28 @@ export interface operations {
     };
     "settings.certificatesGenerate": {
         parameters: {
-            query: {
-                name: string;
-                clearance: components["schemas"]["SecurityClearance"];
-                password?: string;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: components["schemas"]["DatabaseAccess"];
-                };
+                "application/json": components["schemas"]["GenerateClientCertificateRequest"];
             };
         };
         responses: {
             /** @description Bad Request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3723,6 +3877,15 @@ export interface operations {
         responses: {
             /** @description Bad Request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4079,6 +4242,8 @@ export type CdcSinkPostgresSettings = components["schemas"]["CdcSinkPostgresSett
 export type CdcSinkRelationType = components["schemas"]["CdcSinkRelationType"];
 export type CdcSinkTableConfig = components["schemas"]["CdcSinkTableConfig"];
 export type CertificateItem = components["schemas"]["CertificateItem"];
+export type ChannelParameterBinding = components["schemas"]["ChannelParameterBinding"];
+export type ChannelParameterSource = components["schemas"]["ChannelParameterSource"];
 export type ChannelStatsResponse = components["schemas"]["ChannelStatsResponse"];
 export type ChannelSummaryResponse = components["schemas"]["ChannelSummaryResponse"];
 export type ChannelType = components["schemas"]["ChannelType"];
@@ -4100,6 +4265,7 @@ export type DiscoverTableResponse = components["schemas"]["DiscoverTableResponse
 export type EditAgentRequest = components["schemas"]["EditAgentRequest"];
 export type EmbeddedSettings = components["schemas"]["EmbeddedSettings"];
 export type EmbedLinkSummaryResponse = components["schemas"]["EmbedLinkSummaryResponse"];
+export type GenerateClientCertificateRequest = components["schemas"]["GenerateClientCertificateRequest"];
 export type GoogleAIVersion = components["schemas"]["GoogleAIVersion"];
 export type GoogleSettings = components["schemas"]["GoogleSettings"];
 export type HuggingFaceSettings = components["schemas"]["HuggingFaceSettings"];
@@ -4132,13 +4298,16 @@ export type SeriesKey = components["schemas"]["SeriesKey"];
 export type ServerLicenseResponse = components["schemas"]["ServerLicenseResponse"];
 export type SetupTryParameter = components["schemas"]["SetupTryParameter"];
 export type SetupTryRequest = components["schemas"]["SetupTryRequest"];
+export type SlackChannelHealthResponse = components["schemas"]["SlackChannelHealthResponse"];
+export type SlackProvisionRequest = components["schemas"]["SlackProvisionRequest"];
+export type SlackSummaryResponse = components["schemas"]["SlackSummaryResponse"];
+export type SlackUpdateRequest = components["schemas"]["SlackUpdateRequest"];
+export type SlackWebhookInfoResponse = components["schemas"]["SlackWebhookInfoResponse"];
 export type SuggestAgentRequest = components["schemas"]["SuggestAgentRequest"];
 export type SuggestAgentResponse = components["schemas"]["SuggestAgentResponse"];
 export type SuggestCdcRequest = components["schemas"]["SuggestCdcRequest"];
 export type SuggestCdcResponse = components["schemas"]["SuggestCdcResponse"];
 export type TelegramChannelMessages = components["schemas"]["TelegramChannelMessages"];
-export type TelegramParameterBinding = components["schemas"]["TelegramParameterBinding"];
-export type TelegramParameterSource = components["schemas"]["TelegramParameterSource"];
 export type TelegramProvisionRequest = components["schemas"]["TelegramProvisionRequest"];
 export type TelegramSummaryResponse = components["schemas"]["TelegramSummaryResponse"];
 export type TelegramUpdateRequest = components["schemas"]["TelegramUpdateRequest"];
@@ -4247,6 +4416,10 @@ export const API_ENDPOINTS = {
         testMapping: "/setup/test-mapping",
         verifyCdc: "/setup/verify-cdc",
     },
+    slack: {
+        health: (slug: string) => `/apps/${encodeURIComponent(slug)}/slack/health`,
+        webhookInfo: (slug: string, channelId: string) => `/apps/${encodeURIComponent(slug)}/channels/${encodeURIComponent(channelId)}/slack/webhook`,
+    },
     stats: {
         activity: (slug: string) => `/apps/${encodeURIComponent(slug)}/activity`,
         appUsage: (slug: string) => `/apps/${encodeURIComponent(slug)}/usage`,
@@ -4329,7 +4502,7 @@ export function createServerApi(client: ApiClient) {
         settings: {
             certificates: (searchParams: { pageSize: string; start: string; }) => client.get<CertificateItem[], ApiErrorResponse>(API_ENDPOINTS.settings.certificates, { searchParams }),
             certificatesEdit: (request: Record<string, DatabaseAccess>, searchParams: { clearance: SecurityClearance; disable: boolean; name: string; thumbprint: string; }) => client.post<void, ApiErrorResponse>(API_ENDPOINTS.settings.certificatesEdit, request, { searchParams }),
-            certificatesGenerate: (request: Record<string, DatabaseAccess>, searchParams: { clearance: SecurityClearance; name: string; password?: string; }) => client.post<void, ApiErrorResponse>(API_ENDPOINTS.settings.certificatesGenerate, request, { searchParams }),
+            certificatesGenerate: (request: GenerateClientCertificateRequest) => client.post<void, ApiErrorResponse>(API_ENDPOINTS.settings.certificatesGenerate, request),
             feedback: (request: SendFeedbackRequest) => client.post<void, ApiErrorResponse>(API_ENDPOINTS.settings.feedback, request),
             license: () => client.get<LicenseResponse>(API_ENDPOINTS.settings.license),
             usage: (searchParams: { day?: string; month?: string; year: string; }) => client.get<QuillUsageResponse, ApiErrorResponse>(API_ENDPOINTS.settings.usage, { searchParams }),
@@ -4342,6 +4515,10 @@ export function createServerApi(client: ApiClient) {
             suggestCdc: (request: SuggestCdcRequest) => client.post<SuggestCdcResponse, ApiErrorResponse>(API_ENDPOINTS.setup.suggestCdc, request),
             testMapping: (request: TestMappingRequest) => client.post<TestMappingResponse, ApiErrorResponse>(API_ENDPOINTS.setup.testMapping, request),
             verifyCdc: (request: VerifyCdcRequest) => client.post<VerifyCdcResponse, ApiErrorResponse>(API_ENDPOINTS.setup.verifyCdc, request),
+        },
+        slack: {
+            health: (slug: string) => client.get<SlackChannelHealthResponse[], ApiErrorResponse>(API_ENDPOINTS.slack.health(slug)),
+            webhookInfo: (slug: string, channelId: string) => client.get<SlackWebhookInfoResponse, ApiErrorResponse>(API_ENDPOINTS.slack.webhookInfo(slug, channelId)),
         },
         stats: {
             activity: (slug: string) => client.get<ActivityEventDto[], ApiErrorResponse>(API_ENDPOINTS.stats.activity(slug)),

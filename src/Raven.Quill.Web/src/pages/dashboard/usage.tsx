@@ -2,7 +2,7 @@ import { useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { api } from "@/api/api";
-import type { QuillApplicationUsage, QuillPeriodUsage } from "@/api/generated/server-api";
+import type { QuillPeriodUsage } from "@/api/generated/server-api";
 import { ApiState } from "@/components/data/api-state";
 import { WritesBarChart } from "@/components/data/charts";
 import { DatePeriodPicker } from "@/components/data/date-period-picker";
@@ -10,8 +10,8 @@ import { WruLabel } from "@/components/data/wru-label";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/shadcn/ui/card";
 import { canDrillInto, drillInto, formatPeriodLabel, getDefaultDatePeriod, type DatePeriod } from "@/lib/date-period";
 import { useSetupStartDate } from "@/lib/use-start-date";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/shadcn/ui/table";
 import { formatCompact } from "@/lib/format";
+import { PerAppUsageTable } from "@/pages/dashboard/per-app-usage-table";
 
 export function DashboardUsage() {
     const [period, setPeriod] = useState(getDefaultDatePeriod);
@@ -77,7 +77,7 @@ export function DashboardUsage() {
                     <CardTitle>Usage per app</CardTitle>
                     <CardDescription>Totals for {periodLabel}.</CardDescription>
                 </CardHeader>
-                <CardContent className={usageQuery.data ? "px-0" : undefined}>
+                <CardContent>
                     <ApiState
                         isLoading={usageQuery.isPending}
                         isError={usageQuery.isError}
@@ -111,39 +111,4 @@ function toChartData(byPeriod: QuillPeriodUsage[], period: DatePeriod) {
             writes: bucket.usage,
             from: bucket.from,
         }));
-}
-
-function PerAppUsageTable({ apps }: { apps: QuillApplicationUsage[] }) {
-    return (
-        <Table>
-            <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-full pl-4 text-xs font-medium text-muted-foreground">Name</TableHead>
-                    <TableHead className="pr-4 text-right text-xs font-medium text-muted-foreground">
-                        <WruLabel />
-                    </TableHead>
-                </TableRow>
-            </TableHeader>
-            <TableBody>
-                {apps.length === 0 ? (
-                    <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={2} className="h-20 text-center text-muted-foreground">
-                            No usage tracked yet.
-                        </TableCell>
-                    </TableRow>
-                ) : (
-                    apps.map((app) => (
-                        <TableRow key={`${app.topologyId}/${app.applicationName}`}>
-                            <TableCell className="py-3 pl-4 font-medium">{app.applicationName}</TableCell>
-                            <TableCell className="py-3 pr-4">
-                                <span className="w-16 text-right text-muted-foreground tabular-nums">
-                                    {app.usage.toLocaleString()}
-                                </span>
-                            </TableCell>
-                        </TableRow>
-                    ))
-                )}
-            </TableBody>
-        </Table>
-    );
 }

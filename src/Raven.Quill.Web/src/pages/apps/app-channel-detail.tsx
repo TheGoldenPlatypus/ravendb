@@ -1,18 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-    Bot,
-    CodeXml,
-    Fingerprint,
-    Globe,
-    MessageCircle,
-    Pause,
-    Pencil,
-    Play,
-    Send,
-    Trash2,
-    type LucideIcon,
-} from "lucide-react";
+import { Bot, CodeXml, Fingerprint, Globe, MessageCircle, Pause, Pencil, Play, Send, Trash2 } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { api } from "@/api/api";
@@ -32,16 +20,21 @@ import {
 } from "@/components/form/unsaved-changes/unsaved-changes-store";
 import { appRoutes } from "@/lib/app-routes";
 import { CHANNEL_TYPE_LABELS } from "@/lib/channel-type-labels";
+import { SlackIcon } from "@/pages/apps/channels/channel-brand-icons";
 import { cn } from "@/lib/utils";
 import { invalidateChannelQueries } from "@/lib/query-invalidation";
 import { getChannelTabs, resolveActiveTab, type ChannelTabDef } from "@/pages/apps/channels/channel-detail-tabs";
 import { DeleteChannelDialog } from "@/pages/apps/channels/delete-channel-dialog";
 import { EditChannelSheet } from "@/pages/apps/channels/edit-channel-sheet";
 
-const CHANNEL_TYPE_ICONS: Record<NonNullable<ChannelType>, LucideIcon> = {
+const CHANNEL_TYPE_ICONS: Record<
+    NonNullable<ChannelType>,
+    ComponentType<{ className?: string; "aria-hidden"?: boolean }>
+> = {
     IFrame: CodeXml,
     Telegram: Send,
     WhatsApp: MessageCircle,
+    Slack: SlackIcon,
 };
 
 // Roomier hit area than the default trigger padding. The active underline is a single sliding
@@ -263,7 +256,7 @@ function ChannelActions({ slug, channel }: { slug: string; channel: ChannelSumma
                 enabled: !channel.enabled,
             }),
         onSuccess: async () => {
-            await invalidateChannelQueries(queryClient, slug);
+            await invalidateChannelQueries(queryClient, slug, channel.type);
             toast.success(channel.enabled ? "Channel paused" : "Channel resumed");
         },
         onError: (error) => {

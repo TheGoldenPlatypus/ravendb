@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Text } from "@/components/typography";
 import { useLocation, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronsUpDown, Plus } from "lucide-react";
@@ -77,14 +78,14 @@ export function AppBreadcrumbSwitcher({ slug, appName }: AppBreadcrumbSwitcherPr
                         ))}
                     </DropdownMenuRadioGroup>
                 ) : appsQuery.isLoading ? (
-                    <div className="flex items-center gap-2 px-1.5 py-2 text-sm text-muted-foreground">
+                    <Text variant="muted" as="div" className="flex items-center gap-2 px-1.5 py-2">
                         <Spinner />
                         Loading apps…
-                    </div>
+                    </Text>
                 ) : (
-                    <p className="px-1.5 py-2 text-sm text-muted-foreground">
+                    <Text variant="muted" className="px-1.5 py-2">
                         {appsQuery.isError ? "Couldn't load apps." : "No apps yet."}
-                    </p>
+                    </Text>
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={() => navigate(appRoutes.addApp())}>

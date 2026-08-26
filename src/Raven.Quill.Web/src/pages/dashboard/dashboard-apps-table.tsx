@@ -15,6 +15,7 @@ import { datePeriodUnit, type DatePeriod } from "@/lib/date-period";
 import { formatCompact } from "@/lib/format";
 import { DeleteAppDialog } from "@/pages/apps/delete-app-dialog";
 import { EditAppConfirmDialog } from "@/pages/setup/add-app-wizard/edit-app-confirm-dialog";
+import { Heading, Text } from "@/components/typography";
 
 export function DashboardAppsTable({
     apps,
@@ -78,7 +79,7 @@ function AppsToolbar({ count, action }: { count: ReactNode; action: ReactNode })
     return (
         <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold tracking-tight">Apps</h2>
+                <Heading variant="section">Apps</Heading>
                 {count}
             </div>
             {action}
@@ -118,8 +119,12 @@ function AppRow({ app, writes }: { app: ApplianceAppResponse; writes: number | u
         <TableRow className="group">
             <TableCell className="py-3">
                 <Link to={appRoutes.app(app.slug)} className="flex flex-col gap-0.5">
-                    <span className="text-sm font-medium group-hover:underline">{app.name}</span>
-                    <span className="font-mono text-xs text-muted-foreground">{app.slug}</span>
+                    <Text as="span" variant="label" className="group-hover:underline">
+                        {app.name}
+                    </Text>
+                    <Text as="span" variant="caption" className="font-mono">
+                        {app.slug}
+                    </Text>
                 </Link>
             </TableCell>
             <TableCell className="text-sm">{app.source.type || "—"}</TableCell>
@@ -160,7 +165,11 @@ function AppStatusCell({ app }: { app: ApplianceAppResponse }) {
     return (
         <div className="flex flex-col items-start gap-1">
             <StatusIndicator tone={style.tone} label={style.label} />
-            {app.statusSubtitle && <span className="text-xs text-muted-foreground">{app.statusSubtitle}</span>}
+            {app.statusSubtitle && (
+                <Text as="span" variant="caption">
+                    {app.statusSubtitle}
+                </Text>
+            )}
         </div>
     );
 }
@@ -172,10 +181,12 @@ function EmptyAppsState() {
                 <div className="flex size-9 items-center justify-center rounded-md bg-accent text-accent-foreground">
                     <Database className="size-5" aria-hidden="true" />
                 </div>
-                <h2 className="mt-4 text-sm font-semibold">No apps added yet</h2>
-                <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                <Heading variant="label" className="mt-4">
+                    No apps added yet
+                </Heading>
+                <Text variant="caption" className="mt-3 leading-5">
                     Create an app from a source database and a table mapping.
-                </p>
+                </Text>
                 <Button asChild size="sm" className="mt-5">
                     <Link to={appRoutes.addApp()}>
                         <Plus className="size-3.5" aria-hidden="true" />

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { Text } from "@/components/typography";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/api";
 import type { CdcError } from "@/api/generated/server-api";
@@ -44,7 +45,7 @@ export function CdcErrorsSheet({ slug, trigger }: { slug: string; trigger: React
                     >
                         {errorsQuery.data &&
                             (errorsQuery.data.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">No app errors.</p>
+                                <Text variant="muted">No app errors.</Text>
                             ) : (
                                 errorsQuery.data.map((error, index) => <CdcErrorCard key={index} error={error} />)
                             ))}
@@ -62,24 +63,28 @@ function CdcErrorCard({ error }: { error: CdcError }) {
     return (
         <div className="space-y-2 rounded-lg border p-3">
             <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium">{error.taskName}</span>
-                <span className="text-xs text-muted-foreground">{formatDateTime(error.createdAt)}</span>
+                <Text as="span" variant="label">
+                    {error.taskName}
+                </Text>
+                <Text as="span" variant="caption">
+                    {formatDateTime(error.createdAt)}
+                </Text>
             </div>
             <Badge variant="secondary">{error.step}</Badge>
             {shortMessage && <p className="text-sm break-words whitespace-pre-wrap text-destructive">{shortMessage}</p>}
             {error.error && <ErrorDetails details={error.error} />}
             {error.documentId && (
-                <p className="text-xs text-muted-foreground">
+                <Text variant="caption">
                     Document: <span className="font-mono text-foreground">{error.documentId}</span>
-                </p>
+                </Text>
             )}
             {error.affectedDocumentsCount !== null && (
-                <p className="text-xs text-muted-foreground">
+                <Text variant="caption">
                     Affected documents:{" "}
                     <span className="font-mono text-foreground tabular-nums">
                         {formatCompact(error.affectedDocumentsCount)}
                     </span>
-                </p>
+                </Text>
             )}
         </div>
     );

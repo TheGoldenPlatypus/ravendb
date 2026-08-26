@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Heading, Text } from "@/components/typography";
 
 export type NumberedStep = {
     title: string;
@@ -16,13 +17,19 @@ export function NumberedSteps({ steps }: { steps: NumberedStep[] }) {
                 return (
                     <li key={step.title} className="grid grid-cols-[1.5rem_1fr] gap-x-3">
                         <div className="flex flex-col items-center">
-                            <span className="flex size-6 items-center justify-center rounded-full border border-border bg-muted text-xs font-medium text-muted-foreground">
+                            <Text
+                                variant="caption"
+                                as="span"
+                                className="flex size-6 items-center justify-center rounded-full border border-border bg-muted font-medium"
+                            >
                                 {index + 1}
-                            </span>
+                            </Text>
                             {!isLast && <span aria-hidden="true" className="mt-1 w-px flex-1 bg-border" />}
                         </div>
                         <div className={isLast ? "" : "pb-5"}>
-                            <h3 className="mb-1.5 text-base font-medium">{step.title}</h3>
+                            <Heading as="h3" variant="subsection" className="mb-1.5">
+                                {step.title}
+                            </Heading>
                             {step.content}
                         </div>
                     </li>

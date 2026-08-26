@@ -5,7 +5,7 @@ import { ApiState } from "@/components/data/api-state";
 import { DatePeriodPicker } from "@/components/data/date-period-picker";
 import { getDefaultDatePeriod } from "@/lib/date-period";
 import { useSetupStartDate } from "@/lib/use-start-date";
-import { DashboardAppsTable } from "@/pages/dashboard/dashboard-apps-table";
+import { DashboardAppsTable, DashboardAppsTableSkeleton } from "@/pages/dashboard/dashboard-apps-table";
 import { StatCardsSection } from "@/pages/dashboard/dashboard-stat-cards";
 import { buildUsageStatCards } from "@/pages/dashboard/usage-stat-cards";
 
@@ -39,6 +39,7 @@ export function DashboardHome() {
                 errorTitle="Could not load apps"
                 onRetry={() => appsQuery.refetch()}
                 loadingLabel="Loading apps…"
+                skeleton={<DashboardAppsTableSkeleton period={period} />}
             >
                 {appsQuery.data && (
                     <DashboardAppsTable

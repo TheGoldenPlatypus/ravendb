@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { ApiState } from "@/components/data/api-state";
+import { DetailGridSkeleton } from "@/components/data/loading-skeletons";
 import { CopyableCode } from "@/components/data/copyable-code";
 import { Button } from "@/components/shadcn/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/shadcn/ui/card";
@@ -57,7 +58,7 @@ export function DashboardIpConfiguration({ hostname = window.location.hostname }
             <Card>
                 <CardHeader>
                     <CardTitle>Current IP binding</CardTitle>
-                    <CardDescription>The IP address the appliance domain currently resolves to.</CardDescription>
+                    <CardDescription>The IP address Quill&rsquo;s domain currently resolves to.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     {hasResolvableDomain ? (
@@ -67,6 +68,7 @@ export function DashboardIpConfiguration({ hostname = window.location.hostname }
                             errorTitle="Could not resolve the current IP binding"
                             onRetry={() => bindingQuery.refetch()}
                             loadingLabel="Resolving DNS…"
+                            skeleton={<DetailGridSkeleton count={2} />}
                         >
                             <div className="grid gap-6 sm:grid-cols-2">
                                 <div className="space-y-1">
@@ -108,7 +110,7 @@ function ChangeIpCard({ hostname }: { hostname: string }) {
             <CardHeader>
                 <CardTitle>Change the IP</CardTitle>
                 <CardDescription>
-                    Run this command on the Docker host to point the appliance domains (dashboard, db, public, api) at a
+                    Run this command on the Docker host to point Quill&rsquo;s domains (dashboard, db, public, api) at a
                     new IP address.
                 </CardDescription>
             </CardHeader>

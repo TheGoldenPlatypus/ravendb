@@ -65,7 +65,7 @@ export type NavigationItem = {
 type DashboardNavigationDefinition = {
     label: string;
     icon: LucideIcon;
-    section?: "database" | "data-prep" | "settings" | "license-billing";
+    section?: "database" | "data-prep" | "settings" | "license-usage";
 };
 
 type AppRouteDefinitionBase = {
@@ -112,7 +112,7 @@ const dashboardPages: AppRouteDefinition[] = [
         navigation: {
             label: "Usage",
             icon: LineChart,
-            section: "license-billing",
+            section: "license-usage",
         },
         isPageTitleHidden: true,
         element: <DashboardUsage />,
@@ -123,7 +123,7 @@ const dashboardPages: AppRouteDefinition[] = [
         navigation: {
             label: "License",
             icon: KeyRound,
-            section: "license-billing",
+            section: "license-usage",
         },
         isPageTitleHidden: true,
         element: <DashboardLicense />,
@@ -286,7 +286,7 @@ export const navigationItems = dashboardPages.flatMap((page) =>
 ) satisfies NavigationItem[];
 
 const dashboardNavigationSectionDefinitions = [
-    { section: "license-billing", label: "License & Billing" },
+    { section: "license-usage", label: "License & usage" },
     { section: "settings", label: "Settings" },
 ] as const;
 
@@ -357,9 +357,9 @@ const utilityRoutes: RouteObject[] = [
         path: ROUTE_PATTERNS.addApp,
         element: <AddAppWizard />,
         handle: {
-            title: "Add new application",
-            subtitle: "Application connection wizard",
-            breadcrumb: "Add new application",
+            title: "Add new app",
+            subtitle: "App connection wizard",
+            breadcrumb: "Add new app",
             isBareLayout: true,
             isPageTitleHidden: true,
             isSidebarCollapsed: true,
@@ -426,7 +426,7 @@ export const router = createBrowserRouter([
                                 path: ROUTE_PATTERNS.editApp,
                                 element: <EditAppWizard />,
                                 handle: {
-                                    title: "Edit application",
+                                    title: "Edit app",
                                     appScoped: true,
                                     isBareLayout: true,
                                     isPageTitleHidden: true,

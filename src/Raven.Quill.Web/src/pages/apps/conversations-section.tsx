@@ -7,7 +7,7 @@ import { DatePeriodPicker } from "@/components/data/date-period-picker";
 import { TablePagination } from "@/components/table/table-pagination";
 import type { DatePeriod } from "@/lib/date-period";
 import { StatCardsSection, type DashboardStatCard } from "@/pages/dashboard/dashboard-stat-cards";
-import { ConversationsTable } from "@/pages/apps/conversations/conversations-table";
+import { ConversationsTable, ConversationsTableSkeleton } from "@/pages/apps/conversations/conversations-table";
 import {
     ConversationsToolbar,
     type FilterOption,
@@ -91,6 +91,7 @@ export function ConversationsSection({ slug, period }: ConversationsSectionProps
                 errorTitle="Could not load conversations"
                 onRetry={() => void conversationsQuery.refetch()}
                 loadingLabel="Loading conversations..."
+                skeleton={<ConversationsTableSkeleton slug={slug} />}
             >
                 {conversationsQuery.data && (
                     <div className="space-y-4">

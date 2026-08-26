@@ -87,7 +87,7 @@ export function AppWizard({ defaultValues, editedApp }: AppWizardProps) {
         mutationFn: async (formValues: AppFormData) => {
             return await api.services.setup.provision({
                 appName: formValues.externalConnection.appName,
-                slug: formValues.externalConnection.slug || null,
+                slug: formValues.externalConnection.slug,
             });
         },
         onSuccess: async (result, formValues) => {
@@ -165,12 +165,7 @@ function AppCreatedDialog({ app, onContinue }: { app: CreatedApp | null; onConti
                             have to wait for it to finish.
                         </DialogDescription>
                     </DialogHeader>
-                    <CdcPerformanceSection
-                        slug={app.slug}
-                        title="Sync progress"
-                        loadingLabel="Connecting to the live data sync..."
-                        errorTitle="Could not connect to the live data sync"
-                    />
+                    <CdcPerformanceSection slug={app.slug} title="Sync progress" />
                     <DialogFooter>
                         <Button onClick={onContinue}>Continue</Button>
                     </DialogFooter>

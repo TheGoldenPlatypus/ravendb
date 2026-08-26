@@ -7,6 +7,7 @@ import { api } from "@/api/api";
 import type { AgentSummaryResponse, ChannelSummaryResponse, ChannelType } from "@/api/generated/server-api";
 import { ApiState } from "@/components/data/api-state";
 import { DetailHeader, DetailHeaderMenu, DetailHeaderMetaItem } from "@/components/data/detail-header";
+import { FormFieldsSkeleton } from "@/components/data/loading-skeletons";
 import { EnabledStatus } from "@/components/data/status-indicator";
 import { Alert } from "@/components/shadcn/ui/alert";
 import { Button } from "@/components/shadcn/ui/button";
@@ -117,6 +118,7 @@ export function AppChannelDetail() {
                     errorTitle="Could not load channel"
                     onRetry={onRetry}
                     loadingLabel="Loading channel..."
+                    skeleton={<FormFieldsSkeleton count={3} />}
                 >
                     {channelsQuery.data &&
                         (!channel ? (

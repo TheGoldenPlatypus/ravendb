@@ -221,7 +221,7 @@ export const ConnectSourceConnectionString: Story = {
     },
 };
 
-// Import is a header action next to the step title, and it no longer waits for an application name:
+// Import is a header action next to the step title, and it no longer waits for an app name:
 // the wizard endpoints get a draft slug until the operator provides a real one.
 export const ConnectSourceImport: Story = {
     render: () => (
@@ -238,7 +238,7 @@ export const ConnectSourceImport: Story = {
         const heading = canvas.getByRole("heading", { name: /connect to your source database/i });
         const importButton = canvas.getByRole("button", { name: /import configuration/i });
 
-        expect(canvas.getByLabelText(/application name/i)).toHaveValue("");
+        expect(canvas.getByLabelText(/app name/i)).toHaveValue("");
         expect(importButton).toBeEnabled();
 
         // The heading sits in the title block, whose row also carries the header action.
@@ -445,7 +445,7 @@ export const VerifySchemaCdcVerificationFailed: Story = {
         const canvas = within(canvasElement);
         // The failed run reports an error and a warning, so the alert shows the two-entry summary
         // and keeps the individual blockers in its collapsible details.
-        const findAlert = () => canvas.queryByText(/cdc verification failed for the selected tables/i);
+        const findAlert = () => canvas.queryByText(/data source verification failed for the selected tables/i);
 
         await userEvent.click(canvas.getByRole("button", { name: /next/i }));
         await waitFor(() => expect(findAlert()).toBeInTheDocument());

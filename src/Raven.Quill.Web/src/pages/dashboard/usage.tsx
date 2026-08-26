@@ -5,13 +5,14 @@ import { api } from "@/api/api";
 import type { QuillPeriodUsage } from "@/api/generated/server-api";
 import { ApiState } from "@/components/data/api-state";
 import { WritesBarChart } from "@/components/data/charts";
+import { ChartSkeleton } from "@/components/data/loading-skeletons";
 import { DatePeriodPicker } from "@/components/data/date-period-picker";
 import { WruLabel } from "@/components/data/wru-label";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/shadcn/ui/card";
 import { canDrillInto, drillInto, formatPeriodLabel, getDefaultDatePeriod, type DatePeriod } from "@/lib/date-period";
 import { useSetupStartDate } from "@/lib/use-start-date";
 import { formatCompact } from "@/lib/format";
-import { PerAppUsageTable } from "@/pages/dashboard/per-app-usage-table";
+import { PerAppUsageTable, PerAppUsageTableSkeleton } from "@/pages/dashboard/per-app-usage-table";
 
 export function DashboardUsage() {
     const [period, setPeriod] = useState(getDefaultDatePeriod);
@@ -60,6 +61,7 @@ export function DashboardUsage() {
                         errorTitle="Could not load usage"
                         onRetry={() => usageQuery.refetch()}
                         loadingLabel="Loading chart…"
+                        skeleton={<ChartSkeleton />}
                     >
                         {usageQuery.data && (
                             <WritesBarChart
@@ -84,6 +86,7 @@ export function DashboardUsage() {
                         errorTitle="Could not load per-app usage"
                         onRetry={() => usageQuery.refetch()}
                         loadingLabel="Loading apps…"
+                        skeleton={<PerAppUsageTableSkeleton />}
                     >
                         {usageQuery.data && <PerAppUsageTable apps={usageQuery.data.perApplication ?? []} />}
                     </ApiState>

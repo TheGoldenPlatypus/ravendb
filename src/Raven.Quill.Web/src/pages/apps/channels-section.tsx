@@ -103,6 +103,11 @@ export function ChannelsSection({
                                                 {channel.slack.teamName}
                                             </Text>
                                         )}
+                                        {channel.discord?.botUsername && (
+                                            <Text as="div" variant="caption" className="font-normal">
+                                                {channel.discord.botUsername}
+                                            </Text>
+                                        )}
                                     </TableCell>
                                     {!fixedAgent && <TableCell className="font-medium">{agent?.name}</TableCell>}
                                     <TableCell>

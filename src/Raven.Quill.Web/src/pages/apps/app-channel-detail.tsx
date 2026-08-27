@@ -1,6 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, CodeXml, Fingerprint, Globe, MessageCircle, Pause, Pencil, Play, Send, Trash2 } from "lucide-react";
+import {
+    Bot,
+    Building2,
+    CodeXml,
+    Fingerprint,
+    Globe,
+    MessageCircle,
+    Pause,
+    Pencil,
+    Play,
+    Send,
+    Trash2,
+} from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { api } from "@/api/api";
@@ -21,7 +33,7 @@ import {
 } from "@/components/form/unsaved-changes/unsaved-changes-store";
 import { appRoutes } from "@/lib/app-routes";
 import { CHANNEL_TYPE_LABELS } from "@/lib/channel-type-labels";
-import { SlackIcon } from "@/pages/apps/channels/channel-brand-icons";
+import { DiscordIcon, SlackIcon } from "@/pages/apps/channels/channel-brand-icons";
 import { cn } from "@/lib/utils";
 import { invalidateChannelQueries } from "@/lib/query-invalidation";
 import { getChannelTabs, resolveActiveTab, type ChannelTabDef } from "@/pages/apps/channels/channel-detail-tabs";
@@ -36,6 +48,7 @@ const CHANNEL_TYPE_ICONS: Record<
     Telegram: Send,
     WhatsApp: MessageCircle,
     Slack: SlackIcon,
+    Discord: DiscordIcon,
 };
 
 // Roomier hit area than the default trigger padding. The active underline is a single sliding
@@ -218,6 +231,11 @@ function ChannelMeta({ channel, agent }: { channel: ChannelSummaryResponse; agen
             {agent?.name && (
                 <DetailHeaderMetaItem icon={Bot} tooltip="Agent">
                     {agent.name}
+                </DetailHeaderMetaItem>
+            )}
+            {channel.slack?.teamName && (
+                <DetailHeaderMetaItem icon={Building2} tooltip="Slack workspace">
+                    {channel.slack.teamName}
                 </DetailHeaderMetaItem>
             )}
             {allowedOrigins.length > 0 && (

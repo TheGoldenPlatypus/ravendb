@@ -1,4 +1,5 @@
 import { delay, http, HttpResponse, ws, type RequestHandler } from "msw";
+import { MS_IN } from "@/lib/time";
 import type {
     AiConnectionString,
     AppCdcConfigurationResponse,
@@ -30,6 +31,7 @@ export const appsMocks = {
         apiHttp.get("/api/apps/{slug}/cdc", ({ response }) => response(200).json(cdc)),
     cdcErrors: (errors: CdcError[] = sampleCdcErrors) =>
         apiHttp.get("/api/apps/{slug}/cdc/errors", ({ response }) => response(200).json(errors)),
+    cdcRestart: () => apiHttp.post("/api/apps/{slug}/cdc/restart", ({ response }) => response(204).empty()),
     delete: () => apiHttp.delete("/api/apps/{slug}", ({ response }) => response(204).empty()),
     detail: (apps: AppResponse[] = sampleApps) =>
         apiHttp.get("/api/apps/{slug}", ({ params, response }) => {
@@ -128,7 +130,7 @@ export function sampleCdcProgressFrame(): CdcLiveRawFrame {
                 Stats: [
                     {
                         Performance: Array.from({ length: 51 }, (_, index) => {
-                            const startedMs = Date.now() - 5_000 - index * 90_000;
+                            const startedMs = Date.now() - 5 * MS_IN.second - index * 90 * MS_IN.second;
                             const durationInMs = 900 + Math.round(Math.abs(Math.sin(index)) * 800);
                             const read = 480 + index * 7;
 

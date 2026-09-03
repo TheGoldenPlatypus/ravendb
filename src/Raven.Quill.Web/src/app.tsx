@@ -17,6 +17,7 @@ import { AssistantPanel } from "@/components/layout/assistant-panel";
 import { ASSISTANT_PANEL_TITLE_ID, useAssistantPinning, useAssistantStore } from "@/components/layout/assistant-store";
 import { FeedbackSheet } from "@/components/layout/feedback-sheet";
 import { Heading } from "@/components/typography";
+import { PageContainer } from "@/components/page-container";
 import { Button } from "@/components/shadcn/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/shadcn/ui/tooltip";
 
@@ -153,9 +154,16 @@ function App() {
                 )}
             >
                 {!isPageTitleHidden && (
-                    <Heading as="h1" variant="page">
-                        {activeRoute?.title ?? "My apps"}
-                    </Heading>
+                    // Mirror the scroll area below (same bleed + scrollbar-gutter) so the centred title lines up
+                    // with the centred content whether or not the content shows a scrollbar. `overflow-hidden`
+                    // makes this a scroll container so `scrollbar-gutter` reserves the same space here too.
+                    <div className="-mx-4 [scrollbar-gutter:stable] overflow-hidden px-4 lg:-mx-5 lg:px-5">
+                        <PageContainer>
+                            <Heading as="h1" variant="page">
+                                {activeRoute?.title ?? "My apps"}
+                            </Heading>
+                        </PageContainer>
+                    </div>
                 )}
                 <div
                     className={cn(
@@ -163,10 +171,22 @@ function App() {
                         // Bleed the scroll area to the panel's inner border (padding keeps content in place) so
                         // a full-bleed detail header can reach the edges instead of being clipped short. Clip
                         // horizontal overflow so the page never scrolls sideways; wide content self-scrolls.
-                        isBareLayout ? "overflow-auto" : "-mx-4 overflow-x-clip overflow-y-auto px-4 lg:-mx-5 lg:px-5",
+                        // `scrollbar-gutter: stable` reserves the scrollbar space even when no scrollbar shows; the
+                        // title band above mirrors this exact box, so the two centre on the same axis either way.
+                        isBareLayout
+                            ? "overflow-auto"
+                            : "-mx-4 [scrollbar-gutter:stable] overflow-x-clip overflow-y-auto px-4 lg:-mx-5 lg:px-5",
                     )}
                 >
-                    <Outlet />
+                    {/* Bare layouts (wizards) manage their own width; every other page is capped and
+                        centred here so content matches the title band instead of stretching on wide screens. */}
+                    {isBareLayout ? (
+                        <Outlet />
+                    ) : (
+                        <PageContainer>
+                            <Outlet />
+                        </PageContainer>
+                    )}
                 </div>
             </main>
 

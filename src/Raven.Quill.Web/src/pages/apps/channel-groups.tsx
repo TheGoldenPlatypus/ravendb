@@ -7,16 +7,17 @@ import { api } from "@/api/api";
 import type { AgentSummaryResponse, ChannelSummaryResponse, ChannelType } from "@/api/generated/server-api";
 import { ApiState } from "@/components/data/api-state";
 import { CardListSkeleton } from "@/components/data/loading-skeletons";
+import { CountBadge } from "@/components/data/count-badge";
 import { EnabledStatus } from "@/components/data/status-indicator";
-import { Badge } from "@/components/shadcn/ui/badge";
 import { Button } from "@/components/shadcn/ui/button";
 import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/shadcn/ui/card";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/shadcn/ui/input-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/shadcn/ui/select";
 import { Skeleton } from "@/components/shadcn/ui/skeleton";
 import { Heading, Text } from "@/components/typography";
+import { Timestamp } from "@/components/data/timestamp";
 import { appRoutes } from "@/lib/app-routes";
-import { cn, formatDateTime, formatRelativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { DiscordIcon, SlackIcon } from "@/pages/apps/channels/channel-brand-icons";
 import { DeleteChannelDialog } from "@/pages/apps/channels/delete-channel-dialog";
 import { GenerateEmbedLinkDialog } from "@/pages/apps/channels/generate-embed-link-dialog";
@@ -123,9 +124,7 @@ export function ChannelGroups({ slug }: { slug: string }) {
                                         <div className="mb-3 flex items-center gap-2">
                                             <group.icon className="size-4 text-muted-foreground" aria-hidden="true" />
                                             <Heading variant="label">{group.label}</Heading>
-                                            <Badge variant="secondary" className="tabular-nums">
-                                                {group.channels.length}
-                                            </Badge>
+                                            <CountBadge>{group.channels.length}</CountBadge>
                                             {group.label === "Web widgets" && (
                                                 <Button asChild variant="outline">
                                                     <Link to={appRoutes.app(slug, "web-widget/default-customize")}>
@@ -267,7 +266,8 @@ function ChannelCard({
 
     return (
         // The title's stretched ::after overlay turns the whole card into the "open details" link;
-        // interactive children (the footer actions) sit above it with `relative z-10`.
+        // children that need their own pointer events (the footer actions, the hoverable date) sit above
+        // it with `relative z-10`.
         <Card
             size="sm"
             className="relative gap-3 transition-[background-color,box-shadow] hover:bg-muted/40 hover:ring-foreground/25 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-ring"
@@ -323,9 +323,12 @@ function ChannelCard({
                     <StatBox
                         label="Added"
                         value={
-                            <span title={formatDateTime(channel.createdAt)}>
-                                {formatRelativeTime(channel.createdAt)}
-                            </span>
+                            <Timestamp
+                                value={channel.createdAt}
+                                dateVariant="short"
+                                textVariant="inherit"
+                                className="relative z-10"
+                            />
                         }
                     />
                 </div>

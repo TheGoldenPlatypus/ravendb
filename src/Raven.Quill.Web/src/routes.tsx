@@ -269,6 +269,7 @@ const appPages: AppRouteDefinition[] = [
             icon: LineChart,
             section: "settings",
         },
+        isPageTitleHidden: true,
         element: <AppAnalytics />,
     },
 ];

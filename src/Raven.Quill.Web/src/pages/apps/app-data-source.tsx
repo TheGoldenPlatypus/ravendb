@@ -8,12 +8,14 @@ import { DetailHeader, DetailHeaderMenu, DetailHeaderMetaItem } from "@/componen
 import { StatusIndicator } from "@/components/data/status-indicator";
 import { ConfirmDialog } from "@/components/shadcn/ui/confirm-dialog";
 import { DropdownMenuItem } from "@/components/shadcn/ui/dropdown-menu";
+import { Timestamp } from "@/components/data/timestamp";
 import { resolveStatusStyle } from "@/lib/app-status";
-import { formatDate } from "@/lib/format";
 import { CdcPerformanceSection } from "@/pages/apps/cdc-performance-section";
 import { CollectionsSection } from "@/pages/apps/collections-section";
 import { appRoutes } from "@/lib/app-routes";
 import { DeleteAppDialog } from "@/pages/apps/delete-app-dialog";
+import { RestartSyncButton, RestartSyncDialog, RestartSyncMenuItem } from "@/pages/apps/restart-sync";
+import { useRestartSync } from "@/pages/apps/use-restart-sync";
 import { buildConfigExportFromCdc, downloadConfig } from "@/pages/setup/add-app-wizard/config-io";
 import { PROVIDER_OPTIONS } from "@/pages/setup/add-app-wizard/steps/connect/connect-source-options";
 
@@ -44,8 +46,9 @@ export function AppDataSource() {
                             <DetailHeaderMetaItem icon={Database} mono tooltip="Source database">
                                 {appQuery.data.database}
                             </DetailHeaderMetaItem>
-                            <DetailHeaderMetaItem icon={CalendarClock} tooltip="Connected">
-                                {formatDate(appQuery.data.createdAt)}
+                            <DetailHeaderMetaItem icon={CalendarClock}>
+                                Connected{" "}
+                                <Timestamp value={appQuery.data.createdAt} dateVariant="short" textVariant="inherit" />
                             </DetailHeaderMetaItem>
                         </>
                     )
@@ -81,6 +84,11 @@ function DataSourceStatus({ status, isLoading }: { status: string | undefined; i
         return null;
     }
     const style = resolveStatusStyle(status);
+    // A failing sync is already reported below, with the error count and the way to read them.
+    // Repeating it here only adds a second red badge saying less than the section it sits above.
+    if (style.tone === "danger") {
+        return null;
+    }
     return <StatusIndicator tone={style.tone} label={style.label} />;
 }
 
@@ -97,6 +105,7 @@ function DataSourceActions({
 }) {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const restartSync = useRestartSync(slug);
     const [isExportOpen, setIsExportOpen] = useState(false);
     const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
@@ -111,6 +120,10 @@ function DataSourceActions({
 
     return (
         <>
+            {restartSync.hasSyncErrors && (
+                <RestartSyncButton isRestarting={restartSync.isRestarting} onClick={restartSync.confirm} />
+            )}
+
             <DetailHeaderMenu>
                 <DropdownMenuItem onSelect={() => navigate(appRoutes.editApp(slug))}>
                     <Pencil aria-hidden="true" />
@@ -122,11 +135,14 @@ function DataSourceActions({
                         Export configuration
                     </DropdownMenuItem>
                 )}
+                <RestartSyncMenuItem isRestarting={restartSync.isRestarting} onSelect={restartSync.confirm} />
                 <DropdownMenuItem variant="destructive" onSelect={() => setIsDeleteOpen(true)}>
                     <Trash2 aria-hidden="true" />
                     Delete
                 </DropdownMenuItem>
             </DetailHeaderMenu>
+
+            <RestartSyncDialog {...restartSync.dialogProps} />
 
             <ConfirmDialog
                 open={isExportOpen}

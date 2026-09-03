@@ -18,6 +18,7 @@ export function DashboardHome() {
     const appsQuery = useQuery(api.queries.stats.dashboardApps());
 
     const cards = buildUsageStatCards(usageQuery.data, usageQuery.isPending);
+    const hasApps = Boolean(appsQuery.data && appsQuery.data.length > 0);
 
     return (
         <div className="space-y-6">
@@ -25,16 +26,10 @@ export function DashboardHome() {
                 <Heading as="h1" variant="page">
                     My apps
                 </Heading>
+                {hasApps && <DatePeriodPicker value={period} earliest={setupStartDate} onChange={setPeriod} />}
             </header>
 
-            {appsQuery.data && appsQuery.data.length > 0 && (
-                // The period lives here because it also drives the apps table below, but the
-                // picker itself renders inline with the "Activity" header via the action slot.
-                <StatCardsSection
-                    cards={cards}
-                    action={<DatePeriodPicker value={period} earliest={setupStartDate} onChange={setPeriod} />}
-                />
-            )}
+            {hasApps && <StatCardsSection cards={cards} />}
 
             <ApiState
                 isLoading={appsQuery.isPending}

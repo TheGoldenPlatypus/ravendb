@@ -1,4 +1,4 @@
-using Raven.Client.Documents;
+﻿using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.AI;
 using Raven.Client.Documents.Operations.AI.Agents;
 using Raven.Client.Documents.Operations.CdcSink;
@@ -13,11 +13,13 @@ using Raven.Quill.Cdc;
 using Raven.Quill.Contracts;
 using Raven.Quill.Discord;
 using Raven.Quill.Endpoints.Helpers;
+using Raven.Quill.Logging;
 using Raven.Quill.Live;
 using Raven.Quill.Raven;
 using Raven.Quill.Slack;
 using Raven.Quill.Telegram;
 using Raven.Quill.Wizard;
+using Raven.Server.Logging;
 
 namespace Raven.Quill.Endpoints;
 
@@ -55,6 +57,15 @@ public static class AppsEndpoints
             .WithName("apps.cdcGet")
             .Produces<AppCdcConfigurationResponse>()
             .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound);
+        group.MapPost("/{slug}/cdc/restart", RestartCdcAsync)
+            .WithName("apps.cdcRestart")
+            .WithDescription(
+                "Restarts the app's CDC task by disabling and re-enabling it. A task that is already " +
+                "disabled is left alone; enable it instead.")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound)
+            .Produces<ApiErrorResponse>(StatusCodes.Status409Conflict)
+            .Produces<ApiErrorResponse>(StatusCodes.Status500InternalServerError);
 
         group.MapPost("/{slug}/setup/try", SetupTryAsync)
             .WithName("apps.setupTry")
@@ -103,13 +114,12 @@ public static class AppsEndpoints
         SlackHealthRegistry slackHealth,
         IDiscordChannelManager discordManager,
         DiscordHealthRegistry discordHealth,
-        ILogger<AppsLogger> logger,
+        QuillLogger<AppsLogger> logger,
+        HttpContext ctx,
         CancellationToken ct)
     {
-        if (logger.IsEnabled(LogLevel.Information))
-        {
-            logger.LogInformation("Deleting app with slug={Slug}", slug);
-        }
+        if (logger.IsInfoEnabled) 
+            logger.Info($"Deleting app with slug={slug}");
 
         var app = await AppLookup.LoadAppAsync(store, slug, ct);
 
@@ -121,6 +131,10 @@ public static class AppsEndpoints
 
         slackHealth.RemoveDatabase(app.Database);
         discordHealth.RemoveDatabase(app.Database);
+
+        if (logger.AuditEnabled)
+            logger.Audit("DELETE", $"App '{slug}' (database={slug})", ctx);
+
         telegramManager.Wake();
         discordManager.Wake();
 
@@ -132,7 +146,7 @@ public static class AppsEndpoints
         SuggestAgentRequest body,
         IDocumentStore store,
         IAiHelperClient aiClient,
-        ILogger<AppsLogger> logger,
+        QuillLogger<AppsLogger> logger,
         CancellationToken ct)
     {
         var app = await AppLookup.LoadAppAsync(store, slug, ct);
@@ -147,8 +161,7 @@ public static class AppsEndpoints
         if (mode == "from-prompt" && string.IsNullOrWhiteSpace(body!.IntentPrompt))
             return Results.BadRequest(new ApiErrorResponse("intentPrompt is required for from-prompt mode"));
 
-        var task = await store.Maintenance.ForDatabase(slug).SendAsync(new GetOngoingTaskInfoOperation(app.CdcTaskName, OngoingTaskType.CdcSink), ct);
-        var cdcConfig = (task as OngoingTaskCdcSink)?.Configuration;
+        var cdcConfig = (await AppLookup.LoadCdcTaskAsync(store, app, ct))?.Configuration;
 
         if (mode == "from-data" && cdcConfig is null)
             return Results.BadRequest(new ApiErrorResponse(
@@ -164,7 +177,8 @@ public static class AppsEndpoints
         var valid = result.Configurations.Where(IsStructurallyValidDraft).Take(maxCandidates).ToArray();
         if (valid.Length == 0)
         {
-            logger.LogInformation("SuggestAgent: no structurally valid candidate returned for slug={Slug}", slug);
+            if (logger.IsInfoEnabled)
+                logger.Info($"SuggestAgent: no structurally valid candidate returned for slug={slug}");
             return Results.UnprocessableEntity(new ApiErrorResponse("AI service returned no structurally valid agent configuration"));
         }
 
@@ -203,7 +217,8 @@ public static class AppsEndpoints
         string slug,
         EditAgentRequest request,
         IDocumentStore store,
-        ILogger<AppsLogger> logger,
+        QuillLogger<AppsLogger> logger,
+        HttpContext ctx,
         CancellationToken ct)
     {
         var app = await AppLookup.LoadAppAsync(store, slug, ct);
@@ -217,24 +232,30 @@ public static class AppsEndpoints
 
         var body = request.Configuration;
         
-        if (logger.IsEnabled(LogLevel.Information))
-            logger.LogInformation(
-                "Provisioning agent for app slug={Slug} name={Name} identifier={Identifier} cs={ConnectionStringName} queries={QueryCount}, webhooks={WebHooksCount}",
-                app.Slug, body.Name, string.IsNullOrWhiteSpace(body.Identifier) ? "(server-assigned)" : body.Identifier,
-                body.ConnectionStringName, body.Queries?.Count ?? 0, request.ActionBindings?.Count ?? 0);
+        if (logger.IsInfoEnabled)
+            logger.Info(
+                $"Provisioning agent for app slug={app.Slug} name={body.Name} " +
+                $"identifier={(string.IsNullOrWhiteSpace(body.Identifier) ? "(server-assigned)" : body.Identifier)} " +
+                $"cs={body.ConnectionStringName} queries={body.Queries?.Count ?? 0}, " +
+                $"webhooks={request.ActionBindings?.Count ?? 0}");
 
         try
         {
             var result = await AiAgentRegistrar.RegisterAsync(store, body, app.Database, ct);
             await AiAgentRegistrar.RegisterBindingsAsync(store, app.Database, result.Identifier, request.ActionBindings, ct);
+            if (logger.AuditEnabled)
+                logger.Audit("POST",
+                    $"AiAgentConfiguration '{result.Identifier}' in App '{app.Slug}' " +
+                    $"actions=[{AgentActionBindings.DescribeTargetsForAudit(request.ActionBindings)}]",
+                    ctx);
             return Results.Ok(new ProvisionAgentResponse(result.Identifier));
         }
         // map RavenDB validation to a 400 instead of a leaked 500
         catch (RavenException ex)
         {
-            if (logger.IsEnabled(LogLevel.Warning))
-                logger.LogWarning(ex,
-                    "Agent provisioning rejected by RavenDB for app slug={Slug} name={Name}", app.Slug, body.Name);
+            if (logger.IsWarnEnabled)
+                logger.Warn(ex,
+                    $"Agent provisioning rejected by RavenDB for app slug={app.Slug} name={body.Name}");
             return Results.BadRequest(new ApiErrorResponse("agent configuration rejected; see server logs for details"));
         }
     }
@@ -275,9 +296,9 @@ public static class AppsEndpoints
         if (app is null)
             return Results.NotFound(new ApiErrorResponse($"no app with slug '{slug}'"));
 
-        var task = await store.Maintenance.ForDatabase(slug).SendAsync(new GetOngoingTaskInfoOperation(app.CdcTaskName, OngoingTaskType.CdcSink), ct);
-        if (task is not OngoingTaskCdcSink cdc)
-            return Results.NotFound(new ApiErrorResponse("cdc task not found"));
+        var cdc = await AppLookup.LoadCdcTaskAsync(store, app, ct);
+        if (cdc is null)
+            return Results.NotFound(AppLookup.NoCdcTaskError(slug));
 
         var raw = await CdcPerformanceReader.ReadAsync(store.Maintenance.ForDatabase(app.Database), ct);
         var (state, lastModified) = await AppLookup.LoadCdcStateAsync(store, app.Database, app.CdcTaskName, ct);
@@ -309,16 +330,60 @@ public static class AppsEndpoints
         if (app is null)
             return Results.NotFound(new ApiErrorResponse($"no app with slug '{slug}'"));
 
-        // The app database is the source of truth: the wizard's state document is scratch space
-        // that a later setup run for the same slug may reset.
-        var task = await store.Maintenance.ForDatabase(app.Database).SendAsync(
-            new GetOngoingTaskInfoOperation(app.CdcTaskName, OngoingTaskType.CdcSink), ct);
-        if (task is not OngoingTaskCdcSink cdc)
-            return Results.NotFound(new ApiErrorResponse($"no cdc config for {slug} found"));
+        var cdc = await AppLookup.LoadCdcTaskAsync(store, app, ct);
+        if (cdc is null)
+            return Results.NotFound(AppLookup.NoCdcTaskError(slug));
 
         return Results.Ok(new AppCdcConfigurationResponse(
             cdc.Configuration,
             await LoadSourceConnectionStringAsync(store, app.Database, cdc.Configuration.ConnectionStringName, ct)));
+    }
+
+    private static async Task<IResult> RestartCdcAsync(
+        string slug,
+        IDocumentStore store,
+        ILogger<AppsLogger> logger,
+        CancellationToken ct)
+    {
+        var app = await AppLookup.LoadAppAsync(store, slug, ct);
+        if (app is null)
+            return Results.NotFound(new ApiErrorResponse($"no app with slug '{slug}'"));
+
+        var cdc = await AppLookup.LoadCdcTaskAsync(store, app, ct);
+        if (cdc is null)
+            return Results.NotFound(AppLookup.NoCdcTaskError(slug));
+
+        if (cdc.Configuration.Disabled)
+            return Results.Conflict(new ApiErrorResponse(
+                $"cdc task for '{slug}' is disabled; enable it instead of restarting"));
+
+        if (logger.IsEnabled(LogLevel.Information))
+            logger.LogInformation(
+                "Restarting CDC task {TaskName} (id={TaskId}) for app slug={Slug}", app.CdcTaskName, cdc.TaskId, slug);
+
+        var maintenance = store.Maintenance.ForDatabase(app.Database);
+        await maintenance.SendAsync(
+            new ToggleOngoingTaskStateOperation(cdc.TaskId, OngoingTaskType.CdcSink, disable: true), ct);
+
+        // Past this point the sink is stopped, so the re-enable must not ride on the request token:
+        // a caller that navigates away would otherwise leave the sync disabled with nobody told.
+        try
+        {
+            await maintenance.SendAsync(
+                new ToggleOngoingTaskStateOperation(cdc.TaskId, OngoingTaskType.CdcSink, disable: false),
+                CancellationToken.None);
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e,
+                "Failed to re-enable CDC task {TaskName} (id={TaskId}) for app slug={Slug}; the sync is left disabled",
+                app.CdcTaskName, cdc.TaskId, slug);
+            return Results.Json(
+                new ApiErrorResponse($"the sync for '{slug}' was stopped but could not be restarted; it is now disabled"),
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        return Results.NoContent();
     }
 
     private static async Task<string?> LoadSourceConnectionStringAsync(
@@ -341,7 +406,7 @@ public static class AppsEndpoints
         string slug,
         SetupTryRequest body,
         IDocumentStore store,
-        ILogger<AppsLogger> logger,
+        QuillLogger<AppsLogger> logger,
         HttpContext ctx)
     {
         var ct = ctx.RequestAborted;
@@ -395,7 +460,8 @@ public static class AppsEndpoints
         }
         catch (Exception e)
         {
-            logger.LogError(e, "setup/try failed for slug={Slug}", slug);
+            if (logger.IsErrorEnabled)
+                logger.Error(e, $"setup/try failed for slug={slug}");
             try
             {
                 await NdjsonStream.WriteLineAsync(ctx, new { type = "error", message = "Agent test failed. See server logs for details." });

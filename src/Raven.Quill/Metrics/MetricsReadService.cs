@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Operations;
@@ -8,6 +8,7 @@ using Raven.Client.Documents.Session;
 using Raven.Client.Exceptions.Documents.Indexes;
 using Raven.Client.ServerWide.Operations;
 using Raven.Quill.Agents;
+using Raven.Quill.Cdc;
 using Raven.Quill.Channels;
 using Raven.Quill.Contracts;
 using Raven.Quill.Endpoints.Helpers;
@@ -19,19 +20,15 @@ namespace Raven.Quill.Metrics;
 
 internal static class MetricsReadService
 {
-    private const int ChannelPageSize = 1024;
-
     private const string AppIdPrefix = "apps/";
 
     private const string ConversationIdPrefix = "chats/";
-
-    private const int EmbedLinkPageSize = 1024;
 
     private const string UnknownModel = "unknown";
 
     public static async Task<UsageResponse> GetUsageAsync(
         ILicenseStatsProvider provider,
-        IDocumentStore store, List<App> apps, int year, int? month, int? day, ILogger? log, CancellationToken ct)
+        IDocumentStore store, List<App> apps, int year, int? month, int? day, CancellationToken ct)
     {
         var period = new UsagePeriod(year, month, day);
 
@@ -116,7 +113,7 @@ internal static class MetricsReadService
     }
 
     public static async Task<TokensByAppResponse> GetTokensByAppAsync(
-        IDocumentStore store, ILogger? log, CancellationToken ct)
+        IDocumentStore store, CancellationToken ct)
     {
         var apps = await LoadAllAppsAsync(store, ct);
         var results = await Task.WhenAll(apps.Select(async app =>
@@ -256,14 +253,7 @@ internal static class MetricsReadService
     private static async Task<SeriesData> BuildConversationsByChannelAsync(
         IAsyncDocumentSession session, List<DateTime> buckets, UsagePeriod period, CancellationToken ct)
     {
-        // one round-trip: channels + embed-links batched as lazy loads
-        var lazyChannels = session.Advanced.Lazily.LoadStartingWithAsync<Channel>(
-            Channel.IdPrefix, pageSize: ChannelPageSize, token: ct);
-        var lazyLinks = session.Advanced.Lazily.LoadStartingWithAsync<EmbedLink>(
-            EmbedLink.IdPrefix, pageSize: EmbedLinkPageSize, token: ct);
-        await session.Advanced.Eagerly.ExecuteAllPendingLazyOperationsAsync(ct);
-
-        var channels = (await lazyChannels.Value).Values;
+        var channels = await session.LoadAllStartingWithAsync<Channel>(Channel.IdPrefix, ct);
         var nameByChannel = channels
             .Where(c => c.Id is not null)
             .ToDictionary(c => c.Id![Channel.IdPrefix.Length..],
@@ -281,14 +271,16 @@ internal static class MetricsReadService
         for (var b = 0; b < buckets.Count; b++)
             points[b] = NewBucketPoint(keys, period.Label(buckets[b]));
 
-        foreach (var link in (await lazyLinks.Value).Values)
+        var previews = await session.LoadAllStartingWithAsync<ConversationPreview>(ConversationPreview.IdPrefix, ct);
+        foreach (var preview in previews)
         {
-            if (link.CreatedAt < period.Start || link.CreatedAt >= period.End) continue;
-            if (link.ChannelId is null || nameByChannel.ContainsKey(link.ChannelId) == false) continue;
-            if (link.ChannelId == TimeAxisKey) continue;   // dropped from keys above
-            var i = period.IndexOf(link.CreatedAt);
+            if (preview.ChannelId.StartsWith(Channel.IdPrefix, StringComparison.Ordinal) == false) continue;
+            var channelId = preview.ChannelId[Channel.IdPrefix.Length..];
+            if (nameByChannel.ContainsKey(channelId) == false) continue;
+            if (channelId == TimeAxisKey) continue;   // dropped from keys above
+            var i = period.IndexOf(preview.CreatedAt);
             if (i < 0) continue;
-            points[i][link.ChannelId] = (long)points[i][link.ChannelId] + 1L;
+            points[i][channelId] = (long)points[i][channelId] + 1L;
         }
 
         return new SeriesData(points, seriesKeys);
@@ -306,7 +298,7 @@ internal static class MetricsReadService
     }
 
     public static async Task<List<ApplianceAppResponse>> GetDashboardAppsAsync(
-        IDocumentStore store, ILogger? log, CancellationToken ct)
+        IDocumentStore store, CancellationToken ct)
     {
         var apps = await LoadAllAppsAsync(store, ct);
 
@@ -367,7 +359,9 @@ internal static class MetricsReadService
                 sourceType = MapSourceType(sql.FactoryName);
         }
         var agentsCount = record.AiAgents?.Count ?? 0;
-        var (status, subtitle) = DeriveAppStatus(agentsCount, channels.Count, enabledChannels, cdc?.Disabled ?? false);
+        var hasSyncErrors = cdc is { Disabled: false } && await HasSyncErrorsAsync(store, app.Database, ct);
+        var (status, subtitle) = DeriveAppStatus(
+            agentsCount, channels.Count, enabledChannels, cdc?.Disabled ?? false, hasSyncErrors);
 
         return new ApplianceAppResponse(
             Id: app.Slug,  // the prototype routes by app.id; slug is the routing key (id==slug)
@@ -403,11 +397,18 @@ internal static class MetricsReadService
         _ => type.ToString(),
     };
 
-    private static (string Status, string? Subtitle) DeriveAppStatus(
-        int agentsCount, int channelsCount, int enabledChannels, bool cdcDisabled)
+    private static async Task<bool> HasSyncErrorsAsync(IDocumentStore store, string database, CancellationToken ct)
+    {
+        var errors = await CdcPerformanceReader.ReadErrorsAsync(store.Maintenance.ForDatabase(database), ct);
+        return CdcPerformanceShaper.HasErrors(errors);
+    }
+
+    internal static (string Status, string? Subtitle) DeriveAppStatus(
+        int agentsCount, int channelsCount, int enabledChannels, bool cdcDisabled, bool hasSyncErrors)
     {
         if (agentsCount == 0) return ("setup", "No AI agent yet");
         if (cdcDisabled) return ("warning", "Data sync paused");
+        if (hasSyncErrors) return ("error", "Sync errors detected");
         if (channelsCount > 0 && enabledChannels == 0) return ("warning", "All channels disabled");
         return ("running", null);
     }
